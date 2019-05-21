@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import platform
+import threading
 import time
 
 
@@ -35,6 +36,11 @@ class TelegramWrapper:
 
     _client = None
 
+    _chat_id_map = None
+    _chat_id_map_lock = None
+    _receive_handler_thread = None
+    _receive_handler_stop = None
+
     def _td_client_send(self, query):
         query = json.dumps(query).encode('utf-8')
         self._client_send(self._client, query)
@@ -51,6 +57,20 @@ class TelegramWrapper:
         if result:
             result = json.loads(result.decode('utf-8'))
         return result
+
+    def _td_receive_handler(self):
+        logging.debug(f"TDLib JSON message receiver thread started.")
+        while not self._receive_handler_stop.is_set():
+            event = self._td_client_receive()
+
+            if event:
+                # In the next section all of incoming messages should be processed
+                if event['@type'] == 'updateNewChat':
+                    chat_title = event['chat']['title']
+                    chat_id = event['chat']['id']
+                    logging.debug(f"TDLib JSON: chat ID saved: {chat_title}:{chat_id}")
+                    with self._chat_id_map_lock:
+                        self._chat_id_map[chat_title] = chat_id
 
     def __init__(self,
                  tdlib_api_id: int,
@@ -123,7 +143,7 @@ class TelegramWrapper:
         td_set_log_fatal_error_callback(c_on_fatal_error_callback)
 
         # setting low verbosity level before client is created
-        result = self._td_client_execute({'@type': 'setLogVerbosityLevel',
+        self._td_client_execute({'@type': 'setLogVerbosityLevel',
                                           'new_verbosity_level': 0})
 
         self._client = self._client_create()
@@ -138,10 +158,9 @@ class TelegramWrapper:
             logging.warning(f"TDLib JSON log verbosity change not confirmed.")
 
         if tdlib_log_file is not None:
-            # TODO: This part is not working! Fix later.
-            log_stream_file = {'@type': 'logStreamFile', 'path_': tdlib_log_file, 'max_file_size_': tdlib_log_max_size}
+            log_stream_file = {'@type': 'logStreamFile', 'path': tdlib_log_file, 'max_file_size': tdlib_log_max_size}
             result = self._td_client_execute({'@type': 'setLogStream',
-                                              'log_stream_': log_stream_file})
+                                              'log_stream': tdlib_log_file})
             if result and result['@type'] == 'ok':
                 logging.info(f"TDLib JSON log location changed to {log_stream_file}.")
             else:
@@ -212,3 +231,56 @@ class TelegramWrapper:
         if not authenticated:
             logging.error("TDLib JSON client authentication unknown error.")
             raise TelegramAuthError("TDLib JSON client authentication unknown error.")
+
+        logging.debug(f"TDLib JSON message receiver thread initialization.")
+        self._chat_id_map = {}
+        self._chat_id_map_lock = threading.Lock()
+        self._receive_handler_stop = threading.Event()
+        self._receive_handler_thread = threading.Thread(target=self._td_receive_handler, args=())
+        self._receive_handler_thread.start()
+        logging.info(f"TDLib JSON message receiver thread initialization finished.")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self._receive_handler_stop is not None:
+            self._receive_handler_stop.set()
+            self._receive_handler_thread.join()
+
+    # Public methods
+    def update_chat_ids(self, limit: int = 1000):
+        """Update the list of chat IDs. It is needed for successful send_text_message execution with only chat title
+        specified.
+
+        Args:
+            limit: Max number of chats to be received. Most recent chats will be received.
+        """
+        self._td_client_send({'@type': 'getChats', 'limit': limit})
+
+    def send_text_message(self, text: str, **kwargs) -> bool:
+        """Send a text message to a chat specified by either a chat id or chat title.
+
+        Args:
+            text: Text to send.
+            **chat_id (int): ID of the target chat.
+            **chat_title (str): Title of the target chat.
+                Use this option only after executing update_chat_ids at least once.
+        Returns:
+            bool: True if the message is sent. False otherwise. Delivery is not guaranteed.
+        """
+        chat_id = None
+        if 'chat_id' in kwargs:
+            chat_id = kwargs['chat_id']
+        elif 'chat_title' in kwargs:
+            with self._chat_id_map_lock:
+                if kwargs['chat_title'] in self._chat_id_map:
+                    chat_id = self._chat_id_map[kwargs['chat_title']]
+
+        if chat_id is not None:
+            content = {'@type': 'inputMessageText', 'text': {'text': text}}
+            self._td_client_send({'@type': 'sendMessage', 'chat_id': chat_id, 'input_message_content': content})
+            return True
+        else:
+            return False
+
