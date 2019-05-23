@@ -4,6 +4,7 @@ its methods.
 """
 from ctypes.util import find_library
 from ctypes import *
+from enum import Enum
 import json
 import logging
 import os
@@ -23,6 +24,13 @@ def on_fatal_error_callback(error_message: str):
 
 class TelegramAuthError(Exception):
     """Error raised in case of Telegram authentication error"""
+
+
+class TelegramMediaType(Enum):
+    IMAGE = 1
+    ANIMATION = 2
+    VIDEO = 3
+    DOCUMENT = 4
 
 
 class TelegramWrapper:
@@ -65,6 +73,7 @@ class TelegramWrapper:
 
             if event:
                 # In the next section all of incoming messages should be processed
+                print(event)
                 if event['@type'] == 'updateNewChat':
                     chat_title = event['chat']['title']
                     chat_id = event['chat']['id']
@@ -284,3 +293,45 @@ class TelegramWrapper:
         else:
             return False
 
+    def send_media_message(self,
+                           media_path: str,
+                           media_type: TelegramMediaType = TelegramMediaType.IMAGE,
+                           **kwargs) -> bool:
+        """Send a photo message to a chat specified by either a chat id or chat title.
+
+        Args:
+            media_path: Path to a media file.
+            media_type: Type of media file.
+            **caption (str): Caption for an image.
+            **chat_id (int): ID of the target chat.
+            **chat_title (str): Title of the target chat.
+                Use this option only after executing update_chat_ids at least once.
+        Returns:
+            bool: True if the message is sent. False otherwise. Delivery is not guaranteed.
+        """
+        chat_id = None
+        if 'chat_id' in kwargs:
+            chat_id = kwargs['chat_id']
+        elif 'chat_title' in kwargs:
+            with self._chat_id_map_lock:
+                if kwargs['chat_title'] in self._chat_id_map:
+                    chat_id = self._chat_id_map[kwargs['chat_title']]
+
+        if chat_id is not None:
+            caption_text = kwargs['caption'] if 'caption' in kwargs else ''
+            media = {'@type': 'inputFileLocal', 'path': media_path}
+            if media_type == TelegramMediaType.ANIMATION:
+                content = {'@type': 'inputMessageAnimation', 'animation': media, 'caption': {'text': caption_text}}
+            elif media_type == TelegramMediaType.IMAGE:
+                content = {'@type': 'inputMessagePhoto', 'photo': media, 'caption': {'text': caption_text}}
+            elif media_type == TelegramMediaType.DOCUMENT:
+                content = {'@type': 'inputMessageDocument', 'document': media, 'caption': {'text': caption_text}}
+            else:
+                content = {'@type': 'inputMessageVideo',
+                           'video': media,
+                           'caption': {'text': caption_text},
+                           'supports_streaming': False}
+            self._td_client_send({'@type': 'sendMessage', 'chat_id': chat_id, 'input_message_content': content})
+            return True
+        else:
+            return False
