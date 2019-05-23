@@ -11,6 +11,7 @@ import os
 import platform
 import threading
 import time
+from typing import List, Tuple
 
 
 def on_fatal_error_callback(error_message: str):
@@ -26,10 +27,19 @@ class TelegramAuthError(Exception):
     """Error raised in case of Telegram authentication error"""
 
 
-class TelegramMediaType(Enum):
+class TelegramAlbumMediaType(Enum):
+    """Media types supported in album messages
+    """
     IMAGE = 1
-    ANIMATION = 2
-    VIDEO = 3
+    VIDEO = 2
+
+
+class TelegramMediaType(Enum):
+    """Media types supported in media messages
+    """
+    IMAGE = TelegramAlbumMediaType.IMAGE
+    VIDEO = TelegramAlbumMediaType.VIDEO
+    ANIMATION = 3
     DOCUMENT = 4
 
 
@@ -73,13 +83,29 @@ class TelegramWrapper:
 
             if event:
                 # In the next section all of incoming messages should be processed
-                print(event)
+                # print(event)
                 if event['@type'] == 'updateNewChat':
                     chat_title = event['chat']['title']
                     chat_id = event['chat']['id']
                     logging.debug(f"TDLib JSON: chat ID saved: {chat_title}:{chat_id}")
                     with self._chat_id_map_lock:
                         self._chat_id_map[chat_title] = chat_id
+
+    @staticmethod
+    def _get_media_fie_content(media_path: str, media_type: TelegramMediaType, caption: str = ""):
+        media = {'@type': 'inputFileLocal', 'path': media_path}
+        if media_type == TelegramMediaType.ANIMATION:
+            content = {'@type': 'inputMessageAnimation', 'animation': media, 'caption': {'text': caption}}
+        elif media_type == TelegramMediaType.IMAGE:
+            content = {'@type': 'inputMessagePhoto', 'photo': media, 'caption': {'text': caption}}
+        elif media_type == TelegramMediaType.DOCUMENT:
+            content = {'@type': 'inputMessageDocument', 'document': media, 'caption': {'text': caption}}
+        else:
+            content = {'@type': 'inputMessageVideo',
+                       'video': media,
+                       'caption': {'text': caption},
+                       'supports_streaming': True}
+        return content
 
     def __init__(self,
                  tdlib_api_id: int,
@@ -297,7 +323,7 @@ class TelegramWrapper:
                            media_path: str,
                            media_type: TelegramMediaType = TelegramMediaType.IMAGE,
                            **kwargs) -> bool:
-        """Send a photo message to a chat specified by either a chat id or chat title.
+        """Send a media message to a chat specified by either a chat id or chat title.
 
         Args:
             media_path: Path to a media file.
@@ -319,19 +345,34 @@ class TelegramWrapper:
 
         if chat_id is not None:
             caption_text = kwargs['caption'] if 'caption' in kwargs else ''
-            media = {'@type': 'inputFileLocal', 'path': media_path}
-            if media_type == TelegramMediaType.ANIMATION:
-                content = {'@type': 'inputMessageAnimation', 'animation': media, 'caption': {'text': caption_text}}
-            elif media_type == TelegramMediaType.IMAGE:
-                content = {'@type': 'inputMessagePhoto', 'photo': media, 'caption': {'text': caption_text}}
-            elif media_type == TelegramMediaType.DOCUMENT:
-                content = {'@type': 'inputMessageDocument', 'document': media, 'caption': {'text': caption_text}}
-            else:
-                content = {'@type': 'inputMessageVideo',
-                           'video': media,
-                           'caption': {'text': caption_text},
-                           'supports_streaming': False}
+            content = TelegramWrapper._get_media_fie_content(media_path, media_type, caption_text)
             self._td_client_send({'@type': 'sendMessage', 'chat_id': chat_id, 'input_message_content': content})
+            return True
+        else:
+            return False
+
+    def send_album_message(self, media_list: List[Tuple[str, TelegramAlbumMediaType, str]], **kwargs) -> bool:
+        """Send an media album message to a chat specified by either a chat id or chat title.
+
+        Args:
+            media_list: A list of media files. Each media file is a Tuple consisting of path, media type and a caption.
+            **chat_id (int): ID of the target chat.
+            **chat_title (str): Title of the target chat.
+                Use this option only after executing update_chat_ids at least once.
+        Returns:
+            bool: True if the message is sent. False otherwise. Delivery is not guaranteed.
+        """
+        chat_id = None
+        if 'chat_id' in kwargs:
+            chat_id = kwargs['chat_id']
+        elif 'chat_title' in kwargs:
+            with self._chat_id_map_lock:
+                if kwargs['chat_title'] in self._chat_id_map:
+                    chat_id = self._chat_id_map[kwargs['chat_title']]
+
+        if chat_id is not None:
+            contents = [TelegramWrapper._get_media_fie_content(x[0], TelegramMediaType(x[1]), x[2]) for x in media_list]
+            self._td_client_send({'@type': 'sendMessageAlbum', 'chat_id': chat_id, 'input_message_contents': contents})
             return True
         else:
             return False
