@@ -313,6 +313,7 @@ class TelegramWrapper:
                     chat_id = self._chat_id_map[kwargs['chat_title']]
 
         if chat_id is not None:
+            logging.debug(f"Sending the next text message: {text} to chat id {chat_id}.")
             content = {'@type': 'inputMessageText', 'text': {'text': text}}
             self._td_client_send({'@type': 'sendMessage', 'chat_id': chat_id, 'input_message_content': content})
             return True
@@ -344,6 +345,7 @@ class TelegramWrapper:
                     chat_id = self._chat_id_map[kwargs['chat_title']]
 
         if chat_id is not None:
+            logging.debug(f"Sending the next media message: {media_path} to chat id {chat_id}.")
             caption_text = kwargs['caption'] if 'caption' in kwargs else ''
             content = TelegramWrapper._get_media_fie_content(media_path, media_type, caption_text)
             self._td_client_send({'@type': 'sendMessage', 'chat_id': chat_id, 'input_message_content': content})
@@ -371,6 +373,7 @@ class TelegramWrapper:
                     chat_id = self._chat_id_map[kwargs['chat_title']]
 
         if chat_id is not None:
+            logging.debug(f"Sending the album message of {len(media_list)} entities to chat id {chat_id}.")
             contents = [TelegramWrapper._get_media_fie_content(x[0], TelegramMediaType(x[1]), x[2]) for x in media_list]
             self._td_client_send({'@type': 'sendMessageAlbum', 'chat_id': chat_id, 'input_message_contents': contents})
             return True
