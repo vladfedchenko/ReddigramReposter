@@ -3,9 +3,12 @@ and repost its content to a Telegram community."""
 import logging
 import os
 import praw
-from telegram.TelegramWrapper import TelegramWrapper
+import re
+import subprocess
+from telegram.TelegramWrapper import TelegramWrapper, TelegramMediaType
 import threading
 import time
+from typing import Tuple, Optional
 
 
 class SubredditBrowser:
@@ -37,7 +40,13 @@ class SubredditBrowser:
                 for submission in submissions:
                     if submission.id not in self._posted_set:
                         self._posted_set.add(submission.id)
-                        self._telegram_wrap.send_text_message(submission.title, chat_title=self._telegram_channel)
+                        file_path, media_type = self._extract_media(submission)
+                        if file_path is not None:
+                            self._telegram_wrap.send_media_message(file_path,
+                                                                   media_type,
+                                                                   chat_title=self._telegram_channel,
+                                                                   caption=submission.title)
+                            # self._telegram_wrap.send_text_message(submission.title, chat_title=self._telegram_channel)
             else:
                 if time.time() - last_post_time > self._browse_delay:
                     post = True
@@ -47,6 +56,20 @@ class SubredditBrowser:
     def _do_post_storage_cleanup(self):
         # TODO: clean posted set, remove created files
         pass
+
+    def _download_media(self, download_url: str, file_path: str):
+        subprocess.run(['wget', download_url, '-O', file_path])
+
+    def _extract_media(self, submission: praw.models.Submission) -> Tuple[Optional[str], Optional[TelegramMediaType]]:
+        if submission.url is not None:
+            if submission.url.startswith('http://i.imgur.com') and submission.url.endswith('gifv'):
+                media_id = re.findall(r'^http://i\.imgur\.com/(.+)\.gifv', submission.url)[0]
+                download_url = f'http://imgur.com/download/{media_id}'
+                file_path = f'{self._tmp_dir}/{media_id}.mp4'
+                self._download_media(download_url, file_path)
+                return file_path, TelegramMediaType.VIDEO
+        # TODO: extend post variety.
+        return None, None
 
     def __init__(self,
                  reddit_creds: map,
