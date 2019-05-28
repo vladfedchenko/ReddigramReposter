@@ -26,3 +26,4 @@ red_tmp_dir = 'tmp'
 # General
 log_location = 'reddigram_reposter.log'
 log_format_str = '%(asctime)s - %(threadName)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s'
+log_level = 30  # WARNING
