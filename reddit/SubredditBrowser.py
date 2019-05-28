@@ -34,7 +34,8 @@ class SubredditBrowser:
                 last_post_time = time.time()
                 post = False
                 submissions = self._subreddit.top('day', limit=self._top_num)
-                # TODO: browse subreddit and post to telegram
+                for submission in submissions:
+                    pass
             else:
                 if time.time() - last_post_time > self._browse_delay:
                     post = True
