@@ -1,6 +1,6 @@
 """This module contains al the settings required to start an instance of ReddigramReposter"""
 # Telegram settings
-tel_api_id = ''
+tel_api_id = 0  # integer value, not string
 tel_api_hash = ''
 tel_phone = ''
 tel_password = ''  # WARNING: password is stored without encryption. Make sure to secure the file.
