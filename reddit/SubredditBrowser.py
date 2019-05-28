@@ -35,7 +35,9 @@ class SubredditBrowser:
                 post = False
                 submissions = self._subreddit.top('day', limit=self._top_num)
                 for submission in submissions:
-                    pass
+                    if submission.id not in self._posted_set:
+                        self._posted_set.add(submission.id)
+                        self._telegram_wrap.send_text_message(submission.title, chat_title=self._telegram_channel)
             else:
                 if time.time() - last_post_time > self._browse_delay:
                     post = True
@@ -87,7 +89,7 @@ class SubredditBrowser:
 
         self._browse_stop = threading.Event()
         self._browse_worker = threading.Thread(target=self._browse_subreddit, args=())
-        self._browse_worker.run()
+        self._browse_worker.start()
 
         self._tmp_dir = tmp_dir
         if not os.path.isdir(tmp_dir):

@@ -108,10 +108,8 @@ class TelegramWrapper:
         return content
 
     def __init__(self,
-                 tdlib_api_id: int,
-                 tdlib_api_hash: str,
+                 tdlib_auth_info: map,
                  tdlib_allow_input: bool = True,
-                 tdlib_auth_info: map = None,
                  tdlib_database_directory: str = "tdlib_db",
                  tdlib_auth_timeout: int = 10,
                  tdlib_log_verbosity: int = 0,
@@ -120,15 +118,11 @@ class TelegramWrapper:
         """Initialize TelegramWrapper object.
 
         Args:
-            tdlib_api_id: Application identifier for Telegram API access, which can be obtained
-                at https://my.telegram.org.
-            tdlib_api_hash: Application identifier hash for Telegram API access, which can be obtained
-                at https://my.telegram.org.
+            tdlib_auth_info: Dictionary of authentication parameters. Expected to contain 'api_id', 'api_hash', 'phone'
+                and 'password' key-value pairs. They can be obtained at https://my.telegram.org.
             tdlib_allow_input: If True - user will be able to enter authentication info through the console.
                 If False - authentication info is retrieved from tdlib_auth_info dictionary.
                 Note: if MFA is enabled the input of authentication code is expected on first login.
-            tdlib_auth_info: Dictionary of authentication parameters.
-                Expected to contain 'phone' and 'password' key-value pairs.
             tdlib_database_directory: Location of the directory to store TDLib data.
             tdlib_auth_timeout: Amount of time in seconds to wait for authentication confirmation.
             tdlib_log_verbosity: Log verbosity level for TDLib JSON library. Range: [0-5+].
@@ -195,9 +189,9 @@ class TelegramWrapper:
         if tdlib_log_file is not None:
             log_stream_file = {'@type': 'logStreamFile', 'path': tdlib_log_file, 'max_file_size': tdlib_log_max_size}
             result = self._td_client_execute({'@type': 'setLogStream',
-                                              'log_stream': tdlib_log_file})
+                                              'log_stream': log_stream_file})
             if result and result['@type'] == 'ok':
-                logging.info(f"TDLib JSON log location changed to {log_stream_file}.")
+                logging.info(f"TDLib JSON log location changed to {tdlib_log_file}.")
             else:
                 logging.warning(f"TDLib JSON log location change not confirmed.")
 
@@ -214,8 +208,8 @@ class TelegramWrapper:
                 if auth_state['@type'] == 'authorizationStateWaitTdlibParameters':
                     self._td_client_send({'@type': 'setTdlibParameters', 'parameters': {
                                               'database_directory': tdlib_database_directory,
-                                              'api_id': tdlib_api_id,
-                                              'api_hash': tdlib_api_hash,
+                                              'api_id': tdlib_auth_info['api_id'],
+                                              'api_hash': tdlib_auth_info['api_hash'],
                                               'system_language_code': 'en',
                                               'device_model': 'Desktop',
                                               'system_version': 'Linux',
