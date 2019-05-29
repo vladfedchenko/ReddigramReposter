@@ -1,5 +1,6 @@
 """This module contains a SubredditBrowser object. This object is intended to browse "top" section of a single subreddit
 and repost its content to a Telegram community."""
+import filetype
 import logging
 import os
 import praw
@@ -51,23 +52,74 @@ class SubredditBrowser:
                 if time.time() - last_post_time > self._browse_delay:
                     post = True
                 else:
-                    time.sleep(1)
+                    time.sleep(10)
 
     def _do_post_storage_cleanup(self):
         # TODO: clean posted set, remove created files
         pass
 
-    def _download_media(self, download_url: str, file_path: str):
+    def _download_media(self, download_url: str, file_path: str, default_extension: str) -> str:
         subprocess.run(['wget', download_url, '-O', file_path])
+        kind = filetype.guess(file_path)
+        new_name = f"{file_path}.{default_extension}"
+        if kind is not None:
+            new_name = f"{file_path}.{kind.extension}"
+        os.rename(file_path, new_name)
+        return new_name
+
+    def _determine_media_type(self, file_path: str) -> TelegramMediaType:
+        ext = os.path.splitext(file_path)[1][1:]
+        ret_type = TelegramMediaType.IMAGE
+        if ext == 'gif':
+            ret_type = TelegramMediaType.ANIMATION
+        elif ext == 'mp4' or ext == 'avi' or ext == 'webm':
+            ret_type = TelegramMediaType.VIDEO
+        return ret_type
 
     def _extract_media(self, submission: praw.models.Submission) -> Tuple[Optional[str], Optional[TelegramMediaType]]:
+        download_url = None
+        default_ext = None
+        file_path = None
         if submission.url is not None:
-            if submission.url.startswith('http://i.imgur.com') and submission.url.endswith('gifv'):
-                media_id = re.findall(r'^http://i\.imgur\.com/(.+)\.gifv', submission.url)[0]
-                download_url = f'http://imgur.com/download/{media_id}'
-                file_path = f'{self._tmp_dir}/{media_id}.mp4'
-                self._download_media(download_url, file_path)
-                return file_path, TelegramMediaType.VIDEO
+            if submission.url.startswith('http://i.imgur.com') or submission.url.startswith('https://i.imgur.com'):
+                if submission.url.endswith('gifv'):
+                    media_id = re.findall(r'^https://i\.imgur\.com/(.+)\.gifv', submission.url)[0]
+                    download_url = f'https://imgur.com/download/{media_id}'
+                    default_ext = 'gif'
+                    file_path = f'{self._tmp_dir}/{media_id}'
+                elif submission.url.endswith('gif'):
+                    media_id = re.findall(r'^https://i\.imgur\.com/(.+)\.gif', submission.url)[0]
+                    download_url = f'https://i.imgur.com/{media_id}.gif'
+                    default_ext = 'gif'
+                    file_path = f'{self._tmp_dir}/{media_id}'
+                elif submission.url.endswith('jpg'):
+                    media_id = re.findall(r'^https://i\.imgur\.com/(.+)\.jpg', submission.url)[0]
+                    download_url = f'https://i.imgur.com/{media_id}.jpg'
+                    default_ext = 'jpg'
+                    file_path = f'{self._tmp_dir}/{media_id}'
+
+            elif submission.url.startswith('https://v.redd.it/'):
+                media_id = re.findall(r'^https://v\.redd\.it/(.+)', submission.url)[0]
+                download_url = f'{submission.url}/DASH_360'
+                default_ext = 'mp4'
+                file_path = f'{self._tmp_dir}/{media_id}'
+
+            elif submission.url.startswith('https://i.redd.it/'):
+                media_id = re.findall(r'^https://i\.redd\.it/(.+)\.(\w+)', submission.url)[0][0]
+                download_url = f'{submission.url}'
+                default_ext = 'jpg'
+                file_path = f'{self._tmp_dir}/{media_id}'
+
+            elif submission.url.startswith('https://gfycat.com/'):
+                if submission.url.endswith('gif'):
+                    media_id = re.findall(r'^https://gfycat\.com/(.+)\.gif', submission.url)[0]
+                    download_url = f'https://giant.gfycat.com/{media_id}.gif'
+                    file_path = f'{self._tmp_dir}/{media_id}'
+                    default_ext = 'gif'
+        if download_url is not None:
+            file_path = self._download_media(download_url, file_path, default_ext)
+            media_type = self._determine_media_type(file_path)
+            return file_path, media_type
         # TODO: extend post variety.
         return None, None
 

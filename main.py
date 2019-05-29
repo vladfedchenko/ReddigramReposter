@@ -29,7 +29,7 @@ def main():
                               browse_delay=settings.red_browse_delay,
                               tmp_dir=settings.red_tmp_dir) as reddit:
             while reddit.is_running():
-                time.sleep(1)
+                time.sleep(10)
 
 
 if __name__ == "__main__":
