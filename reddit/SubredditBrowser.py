@@ -42,6 +42,7 @@ class SubredditBrowser:
                     if submission.id not in self._posted_set:
                         self._posted_set.add(submission.id)
                         file_path, media_type = self._extract_media(submission)
+                        self._clearance_queue.append((time.time(), file_path, submission.id))
                         if file_path is not None:
                             self._telegram_wrap.send_media_message(file_path,
                                                                    media_type,
@@ -55,8 +56,19 @@ class SubredditBrowser:
                     time.sleep(10)
 
     def _do_post_storage_cleanup(self):
-        # TODO: clean posted set, remove created files
-        pass
+        i = 0
+        for post_info in self._clearance_queue:
+            if time.time() - post_info[0] > 25 * self._browse_delay:
+                i += 1
+            else:
+                break
+
+        to_del = self._clearance_queue[0:i]
+        self._clearance_queue = self._clearance_queue[i:]
+
+        for t, path, s_id in to_del:
+            os.remove(path)
+            self._posted_set.remove(s_id)
 
     def _download_media(self, download_url: str, file_path: str, default_extension: str) -> str:
         subprocess.run(['wget', download_url, '-O', file_path])
