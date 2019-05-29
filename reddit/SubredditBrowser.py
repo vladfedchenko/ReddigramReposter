@@ -109,12 +109,20 @@ class SubredditBrowser:
                     download_url = f'https://i.imgur.com/{media_id}.jpg'
                     default_ext = 'jpg'
                     file_path = f'{self._tmp_dir}/{media_id}'
+                elif submission.url.endswith('png'):
+                    media_id = re.findall(r'^https://i\.imgur\.com/(.+)\.png', submission.url)[0]
+                    download_url = f'https://i.imgur.com/{media_id}.png'
+                    default_ext = 'png'
+                    file_path = f'{self._tmp_dir}/{media_id}'
 
             elif submission.url.startswith('https://v.redd.it/'):
-                media_id = re.findall(r'^https://v\.redd\.it/(.+)', submission.url)[0]
-                download_url = f'{submission.url}/DASH_360'
-                default_ext = 'mp4'
-                file_path = f'{self._tmp_dir}/{media_id}'
+                if len(submission.media) > 0 and 'reddit_video' in submission.media \
+                        and submission.media['reddit_video']['is_gif']:
+                    # Reddit stores videos separately from the audio. For now, only gif-videos are reposted.
+                    media_id = re.findall(r'^https://v\.redd\.it/(.+)', submission.url)[0]
+                    download_url = submission.media['reddit_video']['fallback_url']
+                    default_ext = 'mp4'
+                    file_path = f'{self._tmp_dir}/{media_id}'
 
             elif submission.url.startswith('https://i.redd.it/'):
                 media_id = re.findall(r'^https://i\.redd\.it/(.+)\.(\w+)', submission.url)[0][0]
@@ -132,7 +140,6 @@ class SubredditBrowser:
             file_path = self._download_media(download_url, file_path, default_ext)
             media_type = self._determine_media_type(file_path)
             return file_path, media_type
-        # TODO: extend post variety.
         return None, None
 
     def __init__(self,
