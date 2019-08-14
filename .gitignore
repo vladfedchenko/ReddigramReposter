@@ -1,3 +1,6 @@
 .idea
 *.log
 *.pyc
+*.old
+/tmp/*
+/tdlib_db/*
