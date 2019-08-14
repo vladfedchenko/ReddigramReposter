@@ -1,5 +1,6 @@
 import logging
 from reddit.SubredditBrowser import SubredditBrowser
+import secrets
 import settings
 from telegram.TelegramWrapper import TelegramWrapper
 import time
@@ -10,18 +11,18 @@ def main():
                         format=settings.log_format_str,
                         level=settings.log_level)
 
-    with TelegramWrapper(tdlib_auth_info={'api_id': settings.tel_api_id,
-                                          'api_hash': settings.tel_api_hash,
-                                          'phone': settings.tel_phone,
-                                          'password': settings.tel_password},
+    with TelegramWrapper(tdlib_auth_info={'api_id': secrets.tel_api_id,
+                                          'api_hash': secrets.tel_api_hash,
+                                          'phone': secrets.tel_phone,
+                                          'password': secrets.tel_password},
                          tdlib_database_directory=settings.tel_db_dir,
                          tdlib_log_file=settings.tel_log_file,
                          tdlib_log_verbosity=settings.tel_log_verbosity) as telegram:
-        with SubredditBrowser(reddit_creds={'client_id': settings.red_client_id,
-                                            'client_secret': settings.red_client_secret,
-                                            'username': settings.red_username,
-                                            'password': settings.red_password,
-                                            'user_agent': settings.red_user_agent},
+        with SubredditBrowser(reddit_creds={'client_id': secrets.red_client_id,
+                                            'client_secret': secrets.red_client_secret,
+                                            'username': secrets.red_username,
+                                            'password': secrets.red_password,
+                                            'user_agent': secrets.red_user_agent},
                               subreddit_name=settings.red_subreddit_name,
                               telegram_wrap=telegram,
                               telegram_channel=settings.tel_channel_name,
