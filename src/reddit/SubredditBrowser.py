@@ -71,7 +71,7 @@ class SubredditBrowser:
             self._posted_set.remove(s_id)
 
     def _download_media(self, download_url: str, file_path: str, default_extension: str) -> str:
-        subprocess.run(['wget', download_url, '-O', file_path])
+        subprocess.run(['wget', download_url, '-O', file_path, '-q'])
         kind = filetype.guess(file_path)
         new_name = f"{file_path}.{default_extension}"
         if kind is not None:
