@@ -111,7 +111,7 @@ class TelegramWrapper:
                  tdlib_auth_info: map,
                  tdlib_allow_input: bool = True,
                  tdlib_database_directory: str = "tdlib_db",
-                 tdlib_auth_timeout: int = 10,
+                 tdlib_auth_timeout: int = 60,
                  tdlib_log_verbosity: int = 0,
                  tdlib_log_file: str = None,
                  tdlib_log_max_size: int = 10):
@@ -216,10 +216,10 @@ class TelegramWrapper:
                                               'application_version': '0.1',
                                               'enable_storage_optimizer': True}})
 
-                if auth_state['@type'] == 'authorizationStateWaitEncryptionKey':
+                elif auth_state['@type'] == 'authorizationStateWaitEncryptionKey':
                     self._td_client_send({'@type': 'checkDatabaseEncryptionKey', 'key': 'my_key'})
 
-                if auth_state['@type'] == 'authorizationStateWaitPhoneNumber':
+                elif auth_state['@type'] == 'authorizationStateWaitPhoneNumber':
                     if tdlib_auth_info is not None and 'phone' in tdlib_auth_info:
                         phone_number = tdlib_auth_info['phone']
                     elif tdlib_allow_input:
@@ -231,7 +231,7 @@ class TelegramWrapper:
 
                     self._td_client_send({'@type': 'setAuthenticationPhoneNumber', 'phone_number': phone_number})
 
-                if auth_state['@type'] == 'authorizationStateWaitCode':
+                elif auth_state['@type'] == 'authorizationStateWaitCode':
                     if tdlib_allow_input:
                         code = input('Please insert the authentication code you received: ')
                         countdown_start = time.time()  # countdown is reset if user input is expected
@@ -240,7 +240,7 @@ class TelegramWrapper:
                         raise TelegramAuthError("TDLib JSON: authentication code is requested but not provided.")
                     self._td_client_send({'@type': 'checkAuthenticationCode', 'code': code})
 
-                if auth_state['@type'] == 'authorizationStateWaitPassword':
+                elif auth_state['@type'] == 'authorizationStateWaitPassword':
                     if tdlib_auth_info is not None and 'password' in tdlib_auth_info:
                         password = tdlib_auth_info['password']
                     elif tdlib_allow_input:
@@ -252,7 +252,7 @@ class TelegramWrapper:
 
                     self._td_client_send({'@type': 'checkAuthenticationPassword', 'password': password})
 
-                if auth_state['@type'] == 'authorizationStateReady':
+                elif auth_state['@type'] == 'authorizationStateReady':
                     authenticated = True
                     logging.info(f"TDLib JSON client authenticated.")
                     break
