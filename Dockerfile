@@ -1,6 +1,7 @@
 FROM python:3-slim
 
 WORKDIR /app
+ADD data /app/data
 
 COPY src /app/src
 COPY requirements.txt /app/requirements.txt

@@ -59,37 +59,43 @@ class TelegramWrapper:
     _receive_handler_thread = None
     _receive_handler_stop = None
 
-    def _td_client_send(self, query):
-        query = json.dumps(query).encode('utf-8')
-        self._client_send(self._client, query)
+    def _init_log_handling(self, tdlib_log_verbosity: int, tdlib_log_file: str, tdlib_log_max_size: int):
+        result = self._td_client_execute({'@type': 'setLogVerbosityLevel',
+                                          'new_verbosity_level': tdlib_log_verbosity})
+        if result and result['@type'] == 'ok':
+            logging.info(f"TDLib JSON log verbosity changed to {tdlib_log_verbosity}.")
+        else:
+            logging.warning(f"TDLib JSON log verbosity change not confirmed.")
 
-    def _td_client_receive(self):
-        result = self._client_receive(self._client, 1.0)
-        if result:
-            result = json.loads(result.decode('utf-8'))
-        return result
+        if tdlib_log_file is not None:
+            log_stream_file = {'@type': 'logStreamFile', 'path': tdlib_log_file, 'max_file_size': tdlib_log_max_size}
+            result = self._td_client_execute({'@type': 'setLogStream',
+                                              'log_stream': log_stream_file})
+            if result and result['@type'] == 'ok':
+                logging.info(f"TDLib JSON log location changed to {tdlib_log_file}.")
+            else:
+                logging.warning(f"TDLib JSON log location change not confirmed.")
 
-    def _td_client_execute(self, query):
-        query = json.dumps(query).encode('utf-8')
-        result = self._client_execute(self._client, query)
-        if result:
-            result = json.loads(result.decode('utf-8'))
-        return result
+    def _init_native_funcs(self, tdjson):
+        self._client_create = tdjson.td_json_client_create
+        self._client_create.restype = c_void_p
+        self._client_create.argtypes = []
 
-    def _td_receive_handler(self):
-        logging.debug(f"TDLib JSON message receiver thread started.")
-        while not self._receive_handler_stop.is_set():
-            event = self._td_client_receive()
+        self._client_receive = tdjson.td_json_client_receive
+        self._client_receive.restype = c_char_p
+        self._client_receive.argtypes = [c_void_p, c_double]
 
-            if event:
-                # In the next section all of incoming messages should be processed
-                # print(event)
-                if event['@type'] == 'updateNewChat':
-                    chat_title = event['chat']['title']
-                    chat_id = event['chat']['id']
-                    logging.debug(f"TDLib JSON: chat ID saved: {chat_title}:{chat_id}")
-                    with self._chat_id_map_lock:
-                        self._chat_id_map[chat_title] = chat_id
+        self._client_send = tdjson.td_json_client_send
+        self._client_send.restype = None
+        self._client_send.argtypes = [c_void_p, c_char_p]
+
+        self._client_execute = tdjson.td_json_client_execute
+        self._client_execute.restype = c_char_p
+        self._client_execute.argtypes = [c_void_p, c_char_p]
+
+        self._client_destroy = tdjson.td_json_client_destroy
+        self._client_destroy.restype = None
+        self._client_destroy.argtypes = [c_void_p]
 
     @staticmethod
     def _get_media_fie_content(media_path: str, media_type: TelegramMediaType, caption: str = ""):
@@ -107,10 +113,50 @@ class TelegramWrapper:
                        'supports_streaming': True}
         return content
 
+    def _td_client_execute(self, query):
+        query = json.dumps(query).encode('utf-8')
+        result = self._client_execute(self._client, query)
+        if result:
+            result = json.loads(result.decode('utf-8'))
+        return result
+
+    def _td_client_receive(self):
+        result = self._client_receive(self._client, 1.0)
+        if result:
+            result = json.loads(result.decode('utf-8'))
+        return result
+
+    def _td_client_send(self, query):
+        query = json.dumps(query).encode('utf-8')
+        self._client_send(self._client, query)
+
+    def _td_receive_handler(self):
+        logging.debug(f"TDLib JSON message receiver thread started.")
+        while not self._receive_handler_stop.is_set():
+            event = self._td_client_receive()
+
+            if event:
+                # In the next section all of incoming messages should be processed
+                # print(event)
+                if event['@type'] == 'updateNewChat':
+                    chat_title = event['chat']['title']
+                    chat_id = event['chat']['id']
+                    logging.debug(f"TDLib JSON: chat ID saved: {chat_title}:{chat_id}")
+                    with self._chat_id_map_lock:
+                        self._chat_id_map[chat_title] = chat_id
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self._receive_handler_stop is not None:
+            self._receive_handler_stop.set()
+            self._receive_handler_thread.join()
+
     def __init__(self,
                  tdlib_auth_info: map,
                  tdlib_allow_input: bool = True,
-                 tdlib_database_directory: str = "tdlib_db",
+                 tdlib_database_directory: str = 'tdlib_db',
                  tdlib_auth_timeout: int = 60,
                  tdlib_log_verbosity: int = 0,
                  tdlib_log_file: str = None,
@@ -143,25 +189,7 @@ class TelegramWrapper:
         tdjson = CDLL(tdjson_path)
         logging.info("TDLib JSON lib loaded successfully.")
 
-        self._client_create = tdjson.td_json_client_create
-        self._client_create.restype = c_void_p
-        self._client_create.argtypes = []
-
-        self._client_receive = tdjson.td_json_client_receive
-        self._client_receive.restype = c_char_p
-        self._client_receive.argtypes = [c_void_p, c_double]
-
-        self._client_send = tdjson.td_json_client_send
-        self._client_send.restype = None
-        self._client_send.argtypes = [c_void_p, c_char_p]
-
-        self._client_execute = tdjson.td_json_client_execute
-        self._client_execute.restype = c_char_p
-        self._client_execute.argtypes = [c_void_p, c_char_p]
-
-        self._client_destroy = tdjson.td_json_client_destroy
-        self._client_destroy.restype = None
-        self._client_destroy.argtypes = [c_void_p]
+        self._init_native_funcs(tdjson)
 
         # Error callback handling
         fatal_error_callback_type = CFUNCTYPE(None, c_char_p)
@@ -171,29 +199,10 @@ class TelegramWrapper:
         c_on_fatal_error_callback = fatal_error_callback_type(on_fatal_error_callback)
         td_set_log_fatal_error_callback(c_on_fatal_error_callback)
 
-        # setting low verbosity level before client is created
-        self._td_client_execute({'@type': 'setLogVerbosityLevel',
-                                          'new_verbosity_level': 0})
-
         self._client = self._client_create()
         logging.info("TDLib JSON client created.")
 
-        # TDLib JSON logging handling
-        result = self._td_client_execute({'@type': 'setLogVerbosityLevel',
-                                          'new_verbosity_level': tdlib_log_verbosity})
-        if result and result['@type'] == 'ok':
-            logging.info(f"TDLib JSON log verbosity changed to {tdlib_log_verbosity}.")
-        else:
-            logging.warning(f"TDLib JSON log verbosity change not confirmed.")
-
-        if tdlib_log_file is not None:
-            log_stream_file = {'@type': 'logStreamFile', 'path': tdlib_log_file, 'max_file_size': tdlib_log_max_size}
-            result = self._td_client_execute({'@type': 'setLogStream',
-                                              'log_stream': log_stream_file})
-            if result and result['@type'] == 'ok':
-                logging.info(f"TDLib JSON log location changed to {tdlib_log_file}.")
-            else:
-                logging.warning(f"TDLib JSON log location change not confirmed.")
+        self._init_log_handling(tdlib_log_verbosity, tdlib_log_file, tdlib_log_max_size)
 
         # TDLib JSON authentication handling
         logging.debug(f"TDLib JSON authentication stage started.")
@@ -206,6 +215,7 @@ class TelegramWrapper:
                 auth_state = event['authorization_state']
 
                 if auth_state['@type'] == 'authorizationStateWaitTdlibParameters':
+
                     self._td_client_send({'@type': 'setTdlibParameters', 'parameters': {
                                               'database_directory': tdlib_database_directory,
                                               'api_id': tdlib_auth_info['api_id'],
@@ -269,29 +279,12 @@ class TelegramWrapper:
         self._receive_handler_thread.start()
         logging.info(f"TDLib JSON message receiver thread initialization finished.")
 
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if self._receive_handler_stop is not None:
-            self._receive_handler_stop.set()
-            self._receive_handler_thread.join()
-
     # Public methods
-    def update_chat_ids(self, limit: int = 1000):
-        """Update the list of chat IDs. It is needed for successful send_text_message execution with only chat title
-        specified.
+    def send_album_message(self, media_list: List[Tuple[str, TelegramAlbumMediaType, str]], **kwargs) -> bool:
+        """Send an media album message to a chat specified by either a chat id or chat title.
 
         Args:
-            limit: Max number of chats to be received. Most recent chats will be received.
-        """
-        self._td_client_send({'@type': 'getChats', 'limit': limit})
-
-    def send_text_message(self, text: str, **kwargs) -> bool:
-        """Send a text message to a chat specified by either a chat id or chat title.
-
-        Args:
-            text: Text to send.
+            media_list: A list of media files. Each media file is a Tuple consisting of path, media type and a caption.
             **chat_id (int): ID of the target chat.
             **chat_title (str): Title of the target chat.
                 Use this option only after executing update_chat_ids at least once.
@@ -307,9 +300,9 @@ class TelegramWrapper:
                     chat_id = self._chat_id_map[kwargs['chat_title']]
 
         if chat_id is not None:
-            logging.debug(f"Sending the next text message: {text} to chat id {chat_id}.")
-            content = {'@type': 'inputMessageText', 'text': {'text': text}}
-            self._td_client_send({'@type': 'sendMessage', 'chat_id': chat_id, 'input_message_content': content})
+            logging.debug(f"Sending the album message of {len(media_list)} entities to chat id {chat_id}.")
+            contents = [TelegramWrapper._get_media_fie_content(x[0], TelegramMediaType(x[1]), x[2]) for x in media_list]
+            self._td_client_send({'@type': 'sendMessageAlbum', 'chat_id': chat_id, 'input_message_contents': contents})
             return True
         else:
             return False
@@ -347,11 +340,11 @@ class TelegramWrapper:
         else:
             return False
 
-    def send_album_message(self, media_list: List[Tuple[str, TelegramAlbumMediaType, str]], **kwargs) -> bool:
-        """Send an media album message to a chat specified by either a chat id or chat title.
+    def send_text_message(self, text: str, **kwargs) -> bool:
+        """Send a text message to a chat specified by either a chat id or chat title.
 
         Args:
-            media_list: A list of media files. Each media file is a Tuple consisting of path, media type and a caption.
+            text: Text to send.
             **chat_id (int): ID of the target chat.
             **chat_title (str): Title of the target chat.
                 Use this option only after executing update_chat_ids at least once.
@@ -367,9 +360,18 @@ class TelegramWrapper:
                     chat_id = self._chat_id_map[kwargs['chat_title']]
 
         if chat_id is not None:
-            logging.debug(f"Sending the album message of {len(media_list)} entities to chat id {chat_id}.")
-            contents = [TelegramWrapper._get_media_fie_content(x[0], TelegramMediaType(x[1]), x[2]) for x in media_list]
-            self._td_client_send({'@type': 'sendMessageAlbum', 'chat_id': chat_id, 'input_message_contents': contents})
+            logging.debug(f"Sending the next text message: {text} to chat id {chat_id}.")
+            content = {'@type': 'inputMessageText', 'text': {'text': text}}
+            self._td_client_send({'@type': 'sendMessage', 'chat_id': chat_id, 'input_message_content': content})
             return True
         else:
             return False
+
+    def update_chat_ids(self, limit: int = 1000):
+        """Update the list of chat IDs. It is needed for successful send_text_message execution with only chat title
+        specified.
+
+        Args:
+            limit: Max number of chats to be received. Most recent chats will be received.
+        """
+        self._td_client_send({'@type': 'getChats', 'limit': limit})
