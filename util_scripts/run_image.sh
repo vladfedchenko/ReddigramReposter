@@ -1,3 +1,3 @@
 #!/bin/bash
 
-docker run -a stdin -a stdout -it reddigram-reposter
+docker run -it --mount type=bind,source="$(pwd)"/data,target=/app/data reddigram-reposter
