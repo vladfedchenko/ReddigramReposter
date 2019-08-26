@@ -1,15 +1,14 @@
 """This module contains a SubredditBrowser object. This object is intended to browse "top" section of a single subreddit
 and repost its content to a Telegram community."""
-import filetype
 import logging
 import os
 import praw
 import re
-import subprocess
 from telegram.TelegramWrapper import TelegramWrapper, TelegramMediaType
 import threading
 import time
 from typing import Tuple, Optional
+from utils import DownloadManager
 
 
 class SubredditBrowser:
@@ -70,24 +69,6 @@ class SubredditBrowser:
             os.remove(path)
             self._posted_set.remove(s_id)
 
-    def _download_media(self, download_url: str, file_path: str, default_extension: str) -> str:
-        subprocess.run(['wget', download_url, '-O', file_path, '-q'])
-        kind = filetype.guess(file_path)
-        new_name = f"{file_path}.{default_extension}"
-        if kind is not None:
-            new_name = f"{file_path}.{kind.extension}"
-        os.rename(file_path, new_name)
-        return new_name
-
-    def _determine_media_type(self, file_path: str) -> TelegramMediaType:
-        ext = os.path.splitext(file_path)[1][1:]
-        ret_type = TelegramMediaType.IMAGE
-        if ext == 'gif':
-            ret_type = TelegramMediaType.ANIMATION
-        elif ext == 'mp4' or ext == 'avi' or ext == 'webm':
-            ret_type = TelegramMediaType.VIDEO
-        return ret_type
-
     def _extract_media(self, submission: praw.models.Submission) -> Tuple[Optional[str], Optional[TelegramMediaType]]:
         download_url = None
         default_ext = None
@@ -137,8 +118,8 @@ class SubredditBrowser:
                     file_path = f'{self._tmp_dir}/{media_id}'
                     default_ext = 'gif'
         if download_url is not None:
-            file_path = self._download_media(download_url, file_path, default_ext)
-            media_type = self._determine_media_type(file_path)
+            file_path = DownloadManager.download_media(download_url, file_path, default_ext)
+            media_type = TelegramWrapper.determine_media_type(file_path)
             return file_path, media_type
         return None, None
 
