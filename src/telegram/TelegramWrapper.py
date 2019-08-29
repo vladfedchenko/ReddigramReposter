@@ -11,7 +11,7 @@ import os
 import platform
 import threading
 import time
-from typing import List, Tuple
+from typing import List, Tuple, Callable
 
 
 def on_fatal_error_callback(error_message: str):
@@ -58,6 +58,8 @@ class TelegramWrapper:
     _chat_id_map_lock = None
     _receive_handler_thread = None
     _receive_handler_stop = None
+
+    _message_sent_callbacks = None
 
     def _init_log_handling(self, tdlib_log_verbosity: int, tdlib_log_file: str, tdlib_log_max_size: int):
         result = self._td_client_execute({'@type': 'setLogVerbosityLevel',
@@ -113,6 +115,10 @@ class TelegramWrapper:
                        'supports_streaming': True}
         return content
 
+    def _notify_message_sent(self, message: dict):
+        for callback in self._message_sent_callbacks:
+            callback(message)
+
     def _td_client_execute(self, query):
         query = json.dumps(query).encode('utf-8')
         result = self._client_execute(self._client, query)
@@ -144,6 +150,9 @@ class TelegramWrapper:
                     logging.debug(f"TDLib JSON: chat ID saved: {chat_title}:{chat_id}")
                     with self._chat_id_map_lock:
                         self._chat_id_map[chat_title] = chat_id
+
+                elif event['@type'] == 'updateMessageSendSucceeded':
+                    self._notify_message_sent(event['message'])
 
     def __enter__(self):
         return self
@@ -271,7 +280,12 @@ class TelegramWrapper:
             logging.error("TDLib JSON client authentication unknown error.")
             raise TelegramAuthError("TDLib JSON client authentication unknown error.")
 
-        logging.debug(f"TDLib JSON message receiver thread initialization.")
+        logging.debug(f"Telegram wrapper callback lists initialization.")
+        self._message_sent_callbacks = set()
+        logging.debug(f"Telegram wrapper callback lists initialization finished.")
+
+        # Keep this section last. New thread may start using resources which are not initialized yet otherwise.
+        logging.info(f"TDLib JSON message receiver thread initialization.")
         self._chat_id_map = {}
         self._chat_id_map_lock = threading.Lock()
         self._receive_handler_stop = threading.Event()
@@ -385,6 +399,24 @@ class TelegramWrapper:
             return True
         else:
             return False
+
+    def subscribe_message_sent(self, callback: Callable[[dict], None]):
+        """Subscribe to receive confirmations that the message has been sent.
+
+        Args:
+            callback: Callback function. The message will be passed as an argument when calling the callback.
+        """
+        if callback not in self._message_sent_callbacks:
+            self._message_sent_callbacks.add(callback)
+
+    def unsubscribe_message_sent(self, callback: Callable[[dict], None]):
+        """Unsubscribe from receiving confirmations that the message has been sent.
+
+        Args:
+            callback: Callback function previously passed to subscribe_message_sent.
+        """
+        if callback in self._message_sent_callbacks:
+            self._message_sent_callbacks.remove(callback)
 
     def update_chat_ids(self, limit: int = 1000):
         """Update the list of chat IDs. It is needed for successful send_text_message execution with only chat title
