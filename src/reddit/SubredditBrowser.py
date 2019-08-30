@@ -39,10 +39,10 @@ class SubredditBrowser:
                 submissions = self._subreddit.top('day', limit=self._top_num)
                 for submission in submissions:
                     if submission.id not in self._posted_set:
-                        self._posted_set.add(submission.id)
                         file_path, media_type = self._extract_media(submission)
-                        self._clearance_queue.append((time.time(), file_path, submission.id))
                         if file_path is not None:
+                            self._posted_set.add(submission.id)
+                            self._clearance_queue.append((time.time(), file_path, submission.id))
                             self._telegram_wrap.send_media_message(file_path,
                                                                    media_type,
                                                                    chat_title=self._telegram_channel,
@@ -66,7 +66,6 @@ class SubredditBrowser:
         self._clearance_queue = self._clearance_queue[i:]
 
         for t, path, s_id in to_del:
-            os.remove(path)
             self._posted_set.remove(s_id)
 
     def _extract_media(self, submission: praw.models.Submission) -> Tuple[Optional[str], Optional[TelegramMediaType]]:
@@ -123,6 +122,11 @@ class SubredditBrowser:
             return file_path, media_type
         return None, None
 
+    def _process_message_sent(self, message: dict):
+        logging.debug(f"Message sent notification received: {message}")
+        # TODO: extract media path from the message and delete it
+        logging.debug(f"Message processed: {message}")
+
     def __init__(self,
                  reddit_creds: map,
                  subreddit_name: str,
@@ -170,10 +174,13 @@ class SubredditBrowser:
         if not os.path.isdir(tmp_dir):
             os.makedirs(tmp_dir, exist_ok=True)
 
+        self._telegram_wrap.subscribe_message_sent(self._process_message_sent)
+
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        self._telegram_wrap.unsubscribe_message_sent(self._process_message_sent)
         if self._browse_stop is not None:
             self.stop()
 

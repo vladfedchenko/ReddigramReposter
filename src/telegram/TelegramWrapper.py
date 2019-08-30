@@ -116,8 +116,10 @@ class TelegramWrapper:
         return content
 
     def _notify_message_sent(self, message: dict):
+        logging.debug(f"Message sent: {message}")
         for callback in self._message_sent_callbacks:
             callback(message)
+        logging.debug(f"Message sent: All subscribers notified.")
 
     def _td_client_execute(self, query):
         query = json.dumps(query).encode('utf-8')
