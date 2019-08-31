@@ -41,6 +41,7 @@ class TelegramMediaType(Enum):
     VIDEO = TelegramAlbumMediaType.VIDEO
     ANIMATION = 3
     DOCUMENT = 4
+    AUDIO = 5
 
 
 class TelegramWrapper:
@@ -108,6 +109,8 @@ class TelegramWrapper:
             content = {'@type': 'inputMessagePhoto', 'photo': media, 'caption': {'text': caption}}
         elif media_type == TelegramMediaType.DOCUMENT:
             content = {'@type': 'inputMessageDocument', 'document': media, 'caption': {'text': caption}}
+        elif media_type == TelegramMediaType.AUDIO:
+            content = {'@type': 'inputMessageAudio', 'audio': media, 'caption': {'text': caption}}
         else:
             content = {'@type': 'inputMessageVideo',
                        'video': media,

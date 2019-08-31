@@ -1,8 +1,8 @@
 import logging
-from reddit.SubredditBrowser import SubredditBrowser
+from reddit.subreddit_browser import SubredditBrowser
 import secrets
 import settings
-from telegram.TelegramWrapper import TelegramWrapper
+from telegram.telegram_wrapper import TelegramWrapper
 import time
 
 

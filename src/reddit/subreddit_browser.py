@@ -4,7 +4,7 @@ import logging
 import os
 import praw
 import re
-from telegram.TelegramWrapper import TelegramWrapper, TelegramMediaType
+from telegram.telegram_wrapper import TelegramWrapper, TelegramMediaType
 import threading
 import time
 from typing import Tuple, Optional
