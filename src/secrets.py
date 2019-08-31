@@ -13,3 +13,8 @@ red_username = ''
 # WARNING: password is stored without encryption. Make sure to secure the file.
 red_password = ''
 red_user_agent = ''
+
+# Redis connection details
+redis_host = 'localhost'
+redis_port = 6379
+redis_db = 0

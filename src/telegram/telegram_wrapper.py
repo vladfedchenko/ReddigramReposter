@@ -47,20 +47,6 @@ class TelegramMediaType(Enum):
 class TelegramWrapper:
     """Object to access td_json_client methods via Python code.
     """
-    _client_create = None
-    _client_receive = None
-    _client_send = None
-    _client_execute = None
-    _client_destroy = None
-
-    _client = None
-
-    _chat_id_map = None
-    _chat_id_map_lock = None
-    _receive_handler_thread = None
-    _receive_handler_stop = None
-
-    _message_sent_callbacks = None
 
     def _init_log_handling(self, tdlib_log_verbosity: int, tdlib_log_file: str, tdlib_log_max_size: int):
         result = self._td_client_execute({'@type': 'setLogVerbosityLevel',

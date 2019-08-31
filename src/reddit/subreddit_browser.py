@@ -3,7 +3,9 @@ and repost its content to a Telegram community."""
 import logging
 import os
 import praw
+from prawcore.exceptions import ServerError
 import re
+from redis import Redis
 from telegram.telegram_wrapper import TelegramWrapper, TelegramMediaType
 from telegram.utils import TelegramHelper
 import threading
@@ -15,18 +17,6 @@ from utils import DownloadManager
 class SubredditBrowser:
     """This object is intended to browse a "top" section of a single subreddit and repost its content to a Telegram
     community."""
-    _subreddit = None
-    _telegram_wrap = None
-    _telegram_channel = None
-    _top_num = None
-    _browse_delay = None
-    _posted_set = None
-    _clearance_queue = None
-
-    _browse_worker = None
-    _browse_stop = None
-
-    _tmp_dir = None
 
     def _browse_subreddit(self):
         logging.info("Subreddit browser thread started.")
@@ -37,13 +27,20 @@ class SubredditBrowser:
                 self._do_post_storage_cleanup()
                 last_post_time = time.time()
                 post = False
-                submissions = self._subreddit.top('day', limit=self._top_num)
+                try:
+                    submissions = self._subreddit.top('day', limit=self._top_num)
+                except ServerError:
+                    logging.error("Reddit server error encountered. No reposts during this browse window.")
+                    submissions = []
                 for submission in submissions:
-                    if submission.id not in self._posted_set:
+                    if not self._redis.sismember(f'{self._db_key_prefix}_posted', submission.id):
                         file_path, media_type = self._extract_media(submission)
                         if file_path is not None:
-                            self._posted_set.add(submission.id)
-                            self._clearance_queue.append((time.time(), submission.id))
+                            logging.debug(f'Reposting post ID: {submission.id} from {self._subreddit.display_name} '
+                                          f'to {self._telegram_channel}.')
+
+                            self._redis.sadd(f'{self._db_key_prefix}_posted', submission.id)
+                            self._redis.hset(f'{self._db_key_prefix}_post_time', submission.id, time.time())
                             self._telegram_wrap.send_media_message(file_path,
                                                                    media_type,
                                                                    chat_title=self._telegram_channel,
@@ -56,18 +53,15 @@ class SubredditBrowser:
                     time.sleep(10)
 
     def _do_post_storage_cleanup(self):
-        i = 0
-        for post_info in self._clearance_queue:
-            if time.time() - post_info[0] > 25 * self._browse_delay:
-                i += 1
-            else:
-                break
+        to_del = []
+        for sub_id in self._redis.smembers(f'{self._db_key_prefix}_posted'):
+            posted_time = float(self._redis.hget(f'{self._db_key_prefix}_post_time', sub_id))
+            if time.time() - posted_time > self._cleanup_delay:
+                to_del.append(sub_id)
 
-        to_del = self._clearance_queue[0:i]
-        self._clearance_queue = self._clearance_queue[i:]
-
-        for t, s_id in to_del:
-            self._posted_set.remove(s_id)
+        for sub_id in to_del:
+            self._redis.srem(f'{self._db_key_prefix}_posted', sub_id)
+            self._redis.hdel(f'{self._db_key_prefix}_post_time', sub_id)
 
     def _extract_media(self, submission: praw.models.Submission) -> Tuple[Optional[str], Optional[TelegramMediaType]]:
         download_url = None
@@ -136,8 +130,10 @@ class SubredditBrowser:
                  subreddit_name: str,
                  telegram_wrap: TelegramWrapper,
                  telegram_channel: str,
+                 redis_db: Redis,
                  top_num: int = 20,
-                 browse_delay: int = 3600,
+                 browse_delay: int = 3600,  # one hour by default
+                 cleanup_delay: int = 86400,  # one day by default
                  tmp_dir: str = 'tmp'):
         """Initialize SubredditBrowser object.
 
@@ -146,9 +142,11 @@ class SubredditBrowser:
                 user_agent. Visit https://reddit.com to obtain the credentials.
             subreddit_name: A subreddit to browse.
             telegram_wrap: Telegram client wrapper.
+            redis_db: Redis DB instance. To store reposted posts IDs to avoid repost repetitions.
             telegram_channel: Name of the telegram channel to post into.
             top_num: Number of posts to queue on each update.
             browse_delay: Delay in seconds after which the subreddit will be browsed for updates.
+            cleanup_delay: Delay in seconds after which old entries from DB are removed.
             tmp_dir: Path to a directory to store files temporarily. Warning: cleanup process removes all files from
                 the directory.
         """
@@ -167,8 +165,9 @@ class SubredditBrowser:
         self._top_num = top_num
         self._browse_delay = browse_delay
 
-        self._posted_set = set([])
-        self._clearance_queue = []
+        self._redis = redis_db
+        self._cleanup_delay = cleanup_delay
+        self._db_key_prefix = f"{subreddit_name}_{telegram_channel}"
 
         self._browse_stop = threading.Event()
         self._browse_worker = threading.Thread(target=self._browse_subreddit, args=())

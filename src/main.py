@@ -1,5 +1,6 @@
 import logging
 from reddit.subreddit_browser import SubredditBrowser
+from redis import Redis
 import secrets
 import settings
 from telegram.telegram_wrapper import TelegramWrapper
@@ -10,6 +11,11 @@ def main():
     logging.basicConfig(filename=settings.log_location,
                         format=settings.log_format_str,
                         level=settings.log_level)
+
+    logging.debug(f"Connecting to Redis instance at {secrets.redis_host}:{secrets.redis_port}")
+    redis = Redis(host=secrets.redis_host, port=secrets.redis_port, db=secrets.redis_db)
+    assert redis.ping()
+    logging.info(f"Connected to Redis instance at {secrets.redis_host}:{secrets.redis_port}")
 
     with TelegramWrapper(tdlib_auth_info={'api_id': secrets.tel_api_id,
                                           'api_hash': secrets.tel_api_hash,
@@ -26,6 +32,7 @@ def main():
                               subreddit_name=settings.red_subreddit_name,
                               telegram_wrap=telegram,
                               telegram_channel=settings.tel_channel_name,
+                              redis_db=redis,
                               top_num=settings.red_top_entries_num,
                               browse_delay=settings.red_browse_delay,
                               tmp_dir=settings.red_tmp_dir) as reddit:
