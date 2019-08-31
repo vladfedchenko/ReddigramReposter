@@ -5,6 +5,7 @@ import os
 import praw
 import re
 from telegram.telegram_wrapper import TelegramWrapper, TelegramMediaType
+from telegram.utils import TelegramHelper
 import threading
 import time
 from typing import Tuple, Optional
@@ -42,7 +43,7 @@ class SubredditBrowser:
                         file_path, media_type = self._extract_media(submission)
                         if file_path is not None:
                             self._posted_set.add(submission.id)
-                            self._clearance_queue.append((time.time(), file_path, submission.id))
+                            self._clearance_queue.append((time.time(), submission.id))
                             self._telegram_wrap.send_media_message(file_path,
                                                                    media_type,
                                                                    chat_title=self._telegram_channel,
@@ -65,7 +66,7 @@ class SubredditBrowser:
         to_del = self._clearance_queue[0:i]
         self._clearance_queue = self._clearance_queue[i:]
 
-        for t, path, s_id in to_del:
+        for t, s_id in to_del:
             self._posted_set.remove(s_id)
 
     def _extract_media(self, submission: praw.models.Submission) -> Tuple[Optional[str], Optional[TelegramMediaType]]:
@@ -122,10 +123,13 @@ class SubredditBrowser:
             return file_path, media_type
         return None, None
 
+    # Cannot be static, multiple browser objects may subscribe to same TelegramWrapper object
     def _process_message_sent(self, message: dict):
         logging.debug(f"Message sent notification received: {message}")
-        # TODO: extract media path from the message and delete it
-        logging.debug(f"Message processed: {message}")
+        path = TelegramHelper.extract_media_path(message)
+        if path is not None:
+            os.remove(path)
+        logging.debug(f"Message processed: {message}. File removed: {path}")
 
     def __init__(self,
                  reddit_creds: map,
