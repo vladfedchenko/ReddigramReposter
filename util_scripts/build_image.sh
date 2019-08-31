@@ -1,3 +1,3 @@
 #!/bin/bash
 
-docker build --tag=reddigram-reposter .
+docker build -t vladfedchenko/reddigram-reposter:latest .
