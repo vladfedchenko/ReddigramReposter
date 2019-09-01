@@ -67,6 +67,7 @@ class SubredditBrowser:
         download_url = None
         default_ext = None
         file_path = None
+        logging.debug(f'Extracting media from submission: {submission}')
         if submission.url is not None:
             if submission.url.startswith('http://i.imgur.com') or submission.url.startswith('https://i.imgur.com'):
                 if submission.url.endswith('gifv'):
@@ -91,7 +92,7 @@ class SubredditBrowser:
                     file_path = f'{self._tmp_dir}/{media_id}'
 
             elif submission.url.startswith('https://v.redd.it/'):
-                if len(submission.media) > 0 and 'reddit_video' in submission.media \
+                if submission.media is not None and len(submission.media) > 0 and 'reddit_video' in submission.media \
                         and submission.media['reddit_video']['is_gif']:
                     # Reddit stores videos separately from the audio. For now, only gif-videos are reposted.
                     media_id = re.findall(r'^https://v\.redd\.it/(.+)', submission.url)[0]
