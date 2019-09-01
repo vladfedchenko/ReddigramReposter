@@ -10,7 +10,6 @@ import logging
 import os
 import platform
 import threading
-import time
 from typing import List, Tuple, Callable
 
 
@@ -25,6 +24,17 @@ def on_fatal_error_callback(error_message: str):
 
 class TelegramAuthError(Exception):
     """Error raised in case of Telegram authentication error"""
+
+
+class TelegramAuthState(Enum):
+    """Authentication states for TelegramWrapper object"""
+    WAIT_REQUEST = 0
+    WAIT_TDLIB_PARAMETERS = 1
+    WAIT_ENCRYPTION_KEY = 2
+    WAIT_PHONE_NUMBER = 3
+    WAIT_MFA_CODE = 4
+    WAIT_PASSWORD = 5
+    READY = 6
 
 
 class TelegramAlbumMediaType(Enum):
@@ -110,6 +120,32 @@ class TelegramWrapper:
             callback(message)
         logging.debug(f"Message sent: All subscribers notified.")
 
+    def _process_authorization(self, auth_state: dict):
+        if auth_state['@type'] == 'authorizationStateWaitTdlibParameters':
+            logging.debug("Waiting TDLib parameters.")
+            self._auth_state = TelegramAuthState.WAIT_TDLIB_PARAMETERS
+
+        elif auth_state['@type'] == 'authorizationStateWaitEncryptionKey':
+            logging.debug("Waiting TDLib encryption key.")
+            self._auth_state = TelegramAuthState.WAIT_ENCRYPTION_KEY
+            self._td_client_send({'@type': 'checkDatabaseEncryptionKey', 'key': 'my_key'})
+
+        elif auth_state['@type'] == 'authorizationStateWaitPhoneNumber':
+            logging.debug("Waiting TDLib phone number.")
+            self._auth_state = TelegramAuthState.WAIT_PHONE_NUMBER
+
+        elif auth_state['@type'] == 'authorizationStateWaitCode':
+            logging.debug("Waiting TDLib MFA code.")
+            self._auth_state = TelegramAuthState.WAIT_MFA_CODE
+
+        elif auth_state['@type'] == 'authorizationStateWaitPassword':
+            logging.debug("Waiting TDLib password.")
+            self._auth_state = TelegramAuthState.WAIT_PASSWORD
+
+        elif auth_state['@type'] == 'authorizationStateReady':
+            logging.info("TelegramWrapper ready!")
+            self._auth_state = TelegramAuthState.READY
+
     def _td_client_execute(self, query):
         query = json.dumps(query).encode('utf-8')
         result = self._client_execute(self._client, query)
@@ -145,6 +181,12 @@ class TelegramWrapper:
                 elif event['@type'] == 'updateMessageSendSucceeded':
                     self._notify_message_sent(event['message'])
 
+                elif event['@type'] == 'updateAuthorizationState':
+                    self._process_authorization(event['authorization_state'])
+
+                elif event['@type'] == 'error':
+                    logging.error(f'Telegram error received: {event["code"]} - {event["message"]}')
+
     def __enter__(self):
         return self
 
@@ -154,22 +196,16 @@ class TelegramWrapper:
             self._receive_handler_thread.join()
 
     def __init__(self,
-                 tdlib_auth_info: map,
-                 tdlib_allow_input: bool = True,
-                 tdlib_database_directory: str = 'tdlib_db',
-                 tdlib_auth_timeout: int = 60,
                  tdlib_log_verbosity: int = 0,
                  tdlib_log_file: str = None,
                  tdlib_log_max_size: int = 10):
         """Initialize TelegramWrapper object.
 
         Args:
-            tdlib_auth_info: Dictionary of authentication parameters. Expected to contain 'api_id', 'api_hash', 'phone'
-                and 'password' key-value pairs. They can be obtained at https://my.telegram.org.
+
             tdlib_allow_input: If True - user will be able to enter authentication info through the console.
                 If False - authentication info is retrieved from tdlib_auth_info dictionary.
                 Note: if MFA is enabled the input of authentication code is expected on first login.
-            tdlib_database_directory: Location of the directory to store TDLib data.
             tdlib_auth_timeout: Amount of time in seconds to wait for authentication confirmation.
             tdlib_log_verbosity: Log verbosity level for TDLib JSON library. Range: [0-5+].
             tdlib_log_file: TDLib JSON library log file location.
@@ -204,72 +240,7 @@ class TelegramWrapper:
 
         self._init_log_handling(tdlib_log_verbosity, tdlib_log_file, tdlib_log_max_size)
 
-        # TDLib JSON authentication handling
-        logging.debug(f"TDLib JSON authentication stage started.")
-        countdown_start = time.time()
-        authenticated = False
-        while time.time() - countdown_start <= tdlib_auth_timeout:
-            event = self._td_client_receive()
-
-            if event and event['@type'] == 'updateAuthorizationState':
-                auth_state = event['authorization_state']
-
-                if auth_state['@type'] == 'authorizationStateWaitTdlibParameters':
-
-                    self._td_client_send({'@type': 'setTdlibParameters', 'parameters': {
-                                              'database_directory': tdlib_database_directory,
-                                              'api_id': tdlib_auth_info['api_id'],
-                                              'api_hash': tdlib_auth_info['api_hash'],
-                                              'system_language_code': 'en',
-                                              'device_model': 'Desktop',
-                                              'system_version': 'Linux',
-                                              'application_version': '0.1',
-                                              'enable_storage_optimizer': True}})
-
-                elif auth_state['@type'] == 'authorizationStateWaitEncryptionKey':
-                    self._td_client_send({'@type': 'checkDatabaseEncryptionKey', 'key': 'my_key'})
-
-                elif auth_state['@type'] == 'authorizationStateWaitPhoneNumber':
-                    if tdlib_auth_info is not None and 'phone' in tdlib_auth_info:
-                        phone_number = tdlib_auth_info['phone']
-                    elif tdlib_allow_input:
-                        phone_number = input('Please insert your phone number: ')
-                        countdown_start = time.time()  # countdown is reset if user input is expected
-                    else:
-                        logging.error("TDLib JSON: phone number is requested but not provided.")
-                        raise TelegramAuthError("TDLib JSON: phone number is requested but not provided.")
-
-                    self._td_client_send({'@type': 'setAuthenticationPhoneNumber', 'phone_number': phone_number})
-
-                elif auth_state['@type'] == 'authorizationStateWaitCode':
-                    if tdlib_allow_input:
-                        code = input('Please insert the authentication code you received: ')
-                        countdown_start = time.time()  # countdown is reset if user input is expected
-                    else:
-                        logging.error("TDLib JSON: authentication code is requested but not provided.")
-                        raise TelegramAuthError("TDLib JSON: authentication code is requested but not provided.")
-                    self._td_client_send({'@type': 'checkAuthenticationCode', 'code': code})
-
-                elif auth_state['@type'] == 'authorizationStateWaitPassword':
-                    if tdlib_auth_info is not None and 'password' in tdlib_auth_info:
-                        password = tdlib_auth_info['password']
-                    elif tdlib_allow_input:
-                        password = input('Please insert your password: ')
-                        countdown_start = time.time()  # countdown is reset if user input is expected
-                    else:
-                        logging.error("TDLib JSON: password is requested but not provided.")
-                        raise TelegramAuthError("TDLib JSON: password is requested but not provided.")
-
-                    self._td_client_send({'@type': 'checkAuthenticationPassword', 'password': password})
-
-                elif auth_state['@type'] == 'authorizationStateReady':
-                    authenticated = True
-                    logging.info(f"TDLib JSON client authenticated.")
-                    break
-
-        if not authenticated:
-            logging.error("TDLib JSON client authentication unknown error.")
-            raise TelegramAuthError("TDLib JSON client authentication unknown error.")
+        self._auth_state = TelegramAuthState.WAIT_REQUEST
 
         logging.debug(f"Telegram wrapper callback lists initialization.")
         self._message_sent_callbacks = set()
@@ -285,6 +256,11 @@ class TelegramWrapper:
         logging.info(f"TDLib JSON message receiver thread initialization finished.")
 
     # Public methods
+    @property
+    def authentication_state(self) -> TelegramAuthState:
+        """Returns the authentication state ot the wrapper"""
+        return self._auth_state
+
     @staticmethod
     def determine_media_type(file_path: str) -> TelegramMediaType:
         """Determine the type of media of a file based on its extension.
@@ -390,6 +366,85 @@ class TelegramWrapper:
             return True
         else:
             return False
+
+    def set_tdlib_parameters(self, api_id: int, api_hash: str, tdlib_database_directory: str = 'tdlib_db'):
+        """Set TDLib parameters for client authentication.
+        Execute only if authentication state is WAIT_TDLIB_PARAMETERS.
+
+        Args:
+            api_id: TDLib api ID. Can be obtained at https://my.telegram.org.
+            api_hash: TDLib api hash. Can be obtained at https://my.telegram.org.
+            tdlib_database_directory: Location of the directory to store TDLib data.
+        Raises:
+            TelegramAuthError: If wrapper is not expecting TDLib parameters now.
+        """
+        if self._auth_state == TelegramAuthState.WAIT_TDLIB_PARAMETERS:
+            logging.debug(f"TDLib JSON sending parameters.")
+            self._td_client_send({'@type': 'setTdlibParameters', 'parameters': {
+                                  'database_directory': tdlib_database_directory,
+                                  'api_id': api_id,
+                                  'api_hash': api_hash,
+                                  'system_language_code': 'en',
+                                  'device_model': 'Desktop',
+                                  'system_version': 'Linux',
+                                  'application_version': '0.1',
+                                  'enable_storage_optimizer': True}})
+            self._auth_state = TelegramAuthState.WAIT_REQUEST
+
+        else:
+            logging.error(f"TDLib JSON not expecting TDLib parameters now.")
+            raise TelegramAuthError("Not expecting TDLib parameters now.")
+
+    def set_tdlib_phone(self, phone: str):
+        """Set TDLib phone number for client authentication.
+        Execute only if authentication state is WAIT_PHONE_NUMBER.
+
+        Args:
+            phone: Telegram phone number.
+        Raises:
+            TelegramAuthError: If wrapper is not expecting phone number now.
+        """
+        if self._auth_state == TelegramAuthState.WAIT_PHONE_NUMBER:
+            logging.debug(f"TDLib JSON sending phone number.")
+            self._td_client_send({'@type': 'setAuthenticationPhoneNumber', 'phone_number': phone})
+            self._auth_state = TelegramAuthState.WAIT_REQUEST
+        else:
+            logging.error(f"TDLib JSON not expecting phone number now.")
+            raise TelegramAuthError("Not expecting phone number now.")
+
+    def set_tdlib_mfa_code(self, code: str):
+        """Set TDLib MFA code for client authentication.
+        Execute only if authentication state is WAIT_MFA_CODE.
+
+        Args:
+            code: Telegram MFA code.
+        Raises:
+            TelegramAuthError: If wrapper is not expecting MFA code now.
+        """
+        if self._auth_state == TelegramAuthState.WAIT_MFA_CODE:
+            logging.debug(f"TDLib JSON sending MFA code.")
+            self._td_client_send({'@type': 'checkAuthenticationCode', 'code': code})
+            self._auth_state = TelegramAuthState.WAIT_REQUEST
+        else:
+            logging.error(f"TDLib JSON not expecting MFA code now.")
+            raise TelegramAuthError("Not expecting MFA code now.")
+
+    def set_tdlib_password(self, password: str):
+        """Set TDLib password for client authentication.
+        Execute only if authentication state is WAIT_MFA_CODE.
+
+        Args:
+            password: Telegram password.
+        Raises:
+            TelegramAuthError: If wrapper is not expecting password now.
+        """
+        if self._auth_state == TelegramAuthState.WAIT_PASSWORD:
+            logging.debug(f"TDLib JSON sending password.")
+            self._td_client_send({'@type': 'checkAuthenticationPassword', 'password': password})
+            self._auth_state = TelegramAuthState.WAIT_REQUEST
+        else:
+            logging.error(f"TDLib JSON not expecting password now.")
+            raise TelegramAuthError("Not expecting password now.")
 
     def subscribe_message_sent(self, callback: Callable[[dict], None]):
         """Subscribe to receive confirmations that the message has been sent.
