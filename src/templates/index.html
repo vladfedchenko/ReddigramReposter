@@ -1,0 +1,24 @@
+<!doctype html>
+
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+
+  <title>ReddigramReposter</title>
+  <meta name="description" content="ReddigramReposter index page">
+  <meta name="author" content="Vladyslav Fedchenko">
+</head>
+
+<body>
+    {% if logged_in %}
+    <form action="/logout">
+        <h3>Memes are being reposted!</h3>
+        <input type="submit" value="Logout">
+    </form>
+    {% else %}
+     <form action ="/login">
+        <input type="submit" value="Login">
+    </form>
+    {% endif %}
+</body>
+</html>

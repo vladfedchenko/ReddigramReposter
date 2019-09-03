@@ -125,6 +125,15 @@ class SubredditBrowser:
             os.remove(path)
         logging.debug(f"Message processed: {message}. File removed: {path}")
 
+    def __del__(self):
+        logging.debug(f"Deleting SubredditBrowser object.")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+
     def __init__(self,
                  reddit_creds: map,
                  subreddit_name: str,
@@ -179,18 +188,16 @@ class SubredditBrowser:
 
         self._telegram_wrap.subscribe_message_sent(self._process_message_sent)
 
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self._telegram_wrap.unsubscribe_message_sent(self._process_message_sent)
-        if self._browse_stop is not None:
-            self.stop()
-
     def is_running(self) -> bool:
         """Returns True is the subreddit browsing thread is running."""
         return not self._browse_stop.is_set()
 
     def stop(self):
         """Stop subreddit browsing thread."""
-        self._browse_stop.set()
+        logging.debug(f"Stopping SubredditBrowser object.")
+        self._telegram_wrap.unsubscribe_message_sent(self._process_message_sent)
+        if self._browse_stop is not None:
+            self._browse_stop.set()
+            self._browse_worker.join()
+            self._browse_stop = None
+            self._browse_worker = None

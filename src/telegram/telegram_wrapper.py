@@ -187,13 +187,14 @@ class TelegramWrapper:
                 elif event['@type'] == 'error':
                     logging.error(f'Telegram error received: {event["code"]} - {event["message"]}')
 
+    def __del__(self):
+        logging.debug(f"Deleting TelegramWrapper object.")
+
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self._receive_handler_stop is not None:
-            self._receive_handler_stop.set()
-            self._receive_handler_thread.join()
+        pass
 
     def __init__(self,
                  tdlib_log_verbosity: int = 0,
@@ -445,6 +446,15 @@ class TelegramWrapper:
         else:
             logging.error(f"TDLib JSON not expecting password now.")
             raise TelegramAuthError("Not expecting password now.")
+
+    def stop(self):
+        """Stop all internal threads. Needed for garbage collection"""
+        logging.debug(f"Stopping TelegramWrapper object.")
+        if self._receive_handler_stop is not None:
+            self._receive_handler_stop.set()
+            self._receive_handler_thread.join()
+            self._receive_handler_stop = None
+            self._receive_handler_thread = None
 
     def subscribe_message_sent(self, callback: Callable[[dict], None]):
         """Subscribe to receive confirmations that the message has been sent.
