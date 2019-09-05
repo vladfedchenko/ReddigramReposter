@@ -69,7 +69,7 @@ class SubredditBrowser:
         file_path = None
         logging.debug(f'Extracting media from submission: {submission}')
         if submission.url is not None:
-            if submission.url.startswith('http://i.imgur.com') or submission.url.startswith('https://i.imgur.com'):
+            if submission.url.startswith('https://i.imgur.com'):
                 if submission.url.endswith('gifv'):
                     media_id = re.findall(r'^https://i\.imgur\.com/(.+)\.gifv', submission.url)[0]
                     download_url = f'https://imgur.com/download/{media_id}'
@@ -114,7 +114,7 @@ class SubredditBrowser:
                     default_ext = 'gif'
         if download_url is not None:
             file_path = DownloadManager.download_media(download_url, file_path, default_ext)
-            media_type = TelegramWrapper.determine_media_type(file_path)
+            media_type = TelegramHelper.determine_media_type(file_path)
             return file_path, media_type
         return None, None
 

@@ -1,8 +1,29 @@
 """This module contains different utilities to make it easier to interface with telegram."""
+import os
 from typing import Optional
+from telegram.telegram_wrapper import TelegramMediaType
 
 
 class TelegramHelper:
+    @staticmethod
+    def determine_media_type(file_path: str) -> TelegramMediaType:
+        """Determine the type of media of a file based on its extension.
+
+        Args:
+            file_path: Path to media file.
+        Returns:
+            TelegramMediaType: Media type based on file extension. If extension not recognized - DOCUMENT type returned.
+        """
+        ext = os.path.splitext(file_path)[1][1:]
+        ret_type = TelegramMediaType.DOCUMENT
+        if ext == 'gif':
+            ret_type = TelegramMediaType.ANIMATION
+        elif ext == 'jpg' or ext == 'png':
+            ret_type = TelegramMediaType.IMAGE
+        elif ext == 'mp4' or ext == 'avi' or ext == 'webm':
+            ret_type = TelegramMediaType.VIDEO
+        return ret_type
+
     @staticmethod
     def extract_media_path(message: dict) -> Optional[str]:
         """Extract media file location, if available, from a telegram message.
@@ -36,4 +57,4 @@ class TelegramHelper:
             audio = message['content']['audio']
             local = audio['audio']['local']
 
-        return local['path'] if local is not None else None
+        return local['path'] if local is not None and len(local['path']) > 0 else None

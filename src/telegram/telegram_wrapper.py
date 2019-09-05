@@ -262,25 +262,6 @@ class TelegramWrapper:
         """Returns the authentication state ot the wrapper"""
         return self._auth_state
 
-    @staticmethod
-    def determine_media_type(file_path: str) -> TelegramMediaType:
-        """Determine the type of media of a file based on its extension.
-
-        Args:
-            file_path: Path to media file.
-        Returns:
-            TelegramMediaType: Media type based on file extension. If extension not recognized - DOCUMENT type returned.
-        """
-        ext = os.path.splitext(file_path)[1][1:]
-        ret_type = TelegramMediaType.DOCUMENT
-        if ext == 'gif':
-            ret_type = TelegramMediaType.ANIMATION
-        elif ext == 'jpg' or ext == 'png':
-            ret_type = TelegramMediaType.IMAGE
-        elif ext == 'mp4' or ext == 'avi' or ext == 'webm':
-            ret_type = TelegramMediaType.VIDEO
-        return ret_type
-
     def send_album_message(self, media_list: List[Tuple[str, TelegramAlbumMediaType, str]], **kwargs) -> bool:
         """Send an media album message to a chat specified by either a chat id or chat title.
 
