@@ -30,13 +30,22 @@ reddit = None
 @app.route('/')
 def index():
     global telegram
-    return render_template('index.html', logged_in=telegram is not None)
+    return render_template('index.html',
+                           logged_in=telegram is not None,
+                           subreddit=settings.red_subreddit_name,
+                           tel_channel=settings.tel_channel_name)
 
 
-@app.route('/login')
+@app.route('/login', methods=['GET', 'POST'])
 def login():
     global telegram
     global reddit
+
+    if request.method == 'POST':
+        settings.red_subreddit_name = request.form.get("subreddit")
+        settings.tel_channel_name = request.form.get("tel_channel")
+
+        settings.tel_db_dir = "data/{}_{}_db".format(settings.red_subreddit_name, settings.tel_channel_name)
 
     if telegram is None:
         telegram = TelegramWrapper(tdlib_log_file=settings.tel_log_file,
@@ -106,4 +115,3 @@ def mfa_code():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', debug=False)
-

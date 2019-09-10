@@ -12,12 +12,14 @@
 <body>
     {% if logged_in %}
     <form action="/logout">
-        <h3>Memes are being reposted!</h3>
+        <h3>Reposting from {{ subreddit }} to {{ tel_channel }}</h3>
         <input type="submit" value="Logout">
     </form>
     {% else %}
-     <form action ="/login">
-        <input type="submit" value="Login">
+     <form action ="/login" method="post">
+         Subreddit       : <input type="text" value="{{ subreddit }}" name="subreddit"> <br>
+         Telegram channel: <input type="text" value="{{ tel_channel }}" name="tel_channel"> <br>
+         <input type="submit" value="Login"> <br>
     </form>
     {% endif %}
 </body>
