@@ -1,6 +1,7 @@
 """This is an entry file for Flask ReddigramReposter app"""
 from flask import Flask, redirect, render_template, request, url_for
 import logging
+import os
 from reddit.subreddit_browser import SubredditBrowser
 from redis import Redis
 import secrets
@@ -8,7 +9,7 @@ import settings
 from telegram.telegram_wrapper import TelegramWrapper, TelegramAuthState
 import time
 
-app = Flask("ReddigramReposter")
+app = Flask("ReddigramReposter", root_path=os.path.dirname(__file__))
 
 # logging setup
 logging.basicConfig(filename=settings.log_location,

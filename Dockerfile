@@ -12,4 +12,4 @@ RUN pip install -r requirements.txt
 RUN adduser vladfedchenko --quiet
 USER vladfedchenko:vladfedchenko
 
-CMD ["python", "src/main.py"]
+CMD ["python", "src/reposter.py"]
