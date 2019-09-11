@@ -50,7 +50,7 @@ class SubredditBrowser:
                 if time.time() - last_post_time > self._browse_delay:
                     post = True
                 else:
-                    time.sleep(10)
+                    time.sleep(1)
 
     def _do_post_storage_cleanup(self):
         to_del = []
@@ -128,6 +128,14 @@ class SubredditBrowser:
 
     def __del__(self):
         logging.debug(f"Deleting SubredditBrowser object.")
+
+        del self._subreddit
+
+        self._subreddit = None
+        self._telegram_wrap = None
+        self._redis = None
+
+        logging.debug(f"SubredditBrowser object deleted.")
 
     def __enter__(self):
         return self

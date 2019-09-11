@@ -189,6 +189,27 @@ class TelegramWrapper:
 
     def __del__(self):
         logging.debug(f"Deleting TelegramWrapper object.")
+        self._client_destroy(self._client)
+
+        del self._tdjson
+        del self._client
+        del self._client_create
+        del self._client_receive
+        del self._client_send
+        del self._client_execute
+        del self._client_destroy
+        del self._td_set_log_fatal_error_callback
+
+        self._tdjson = None
+        self._client = None
+        self._client_create = None
+        self._client_receive = None
+        self._client_send = None
+        self._client_execute = None
+        self._client_destroy = None
+        self._td_set_log_fatal_error_callback = None
+
+        logging.debug(f"TelegramWrapper object deleted.")
 
     def __enter__(self):
         return self
@@ -223,18 +244,18 @@ class TelegramWrapper:
         if tdjson_path is None:
             logging.critical("TDLib JSON library not found. Cannot initialize TelegramWrapper object.")
             raise ModuleNotFoundError("TDLib JSON library not found. Cannot initialize TelegramWrapper object.")
-        tdjson = CDLL(tdjson_path)
+        self._tdjson = CDLL(tdjson_path)
         logging.info("TDLib JSON lib loaded successfully.")
 
-        self._init_native_funcs(tdjson)
+        self._init_native_funcs(self._tdjson)
 
         # Error callback handling
         fatal_error_callback_type = CFUNCTYPE(None, c_char_p)
-        td_set_log_fatal_error_callback = tdjson.td_set_log_fatal_error_callback
-        td_set_log_fatal_error_callback.restype = None
-        td_set_log_fatal_error_callback.argtypes = [fatal_error_callback_type]
+        self._td_set_log_fatal_error_callback = self._tdjson.td_set_log_fatal_error_callback
+        self._td_set_log_fatal_error_callback.restype = None
+        self._td_set_log_fatal_error_callback.argtypes = [fatal_error_callback_type]
         c_on_fatal_error_callback = fatal_error_callback_type(on_fatal_error_callback)
-        td_set_log_fatal_error_callback(c_on_fatal_error_callback)
+        self._td_set_log_fatal_error_callback(c_on_fatal_error_callback)
 
         self._client = self._client_create()
         logging.info("TDLib JSON client created.")
