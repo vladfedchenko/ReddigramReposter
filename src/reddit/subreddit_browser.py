@@ -6,6 +6,7 @@ import praw
 from prawcore.exceptions import ServerError
 import re
 from redis import Redis
+from stats import StatCollector
 from telegram.telegram_wrapper import TelegramWrapper, TelegramMediaType
 from telegram.utils import TelegramHelper
 import threading
@@ -34,7 +35,7 @@ class SubredditBrowser:
                     submissions = []
                 for submission in submissions:
                     if not self._redis.sismember(f'{self._db_key_prefix}_posted', submission.id):
-                        file_path, media_type = self._extract_media(submission)
+                        file_path = self._extract_media(submission)
                         if file_path is not None:
                             logging.debug(f'Reposting post ID: {submission.id} from {self._subreddit.display_name} '
                                           f'to {self._telegram_channel}.')
@@ -42,9 +43,10 @@ class SubredditBrowser:
                             self._redis.sadd(f'{self._db_key_prefix}_posted', submission.id)
                             self._redis.hset(f'{self._db_key_prefix}_post_time', submission.id, time.time())
                             self._telegram_wrap.send_media_message(file_path,
-                                                                   media_type,
+                                                                   TelegramHelper.determine_media_type(file_path),
                                                                    chat_title=self._telegram_channel,
                                                                    caption=submission.title)
+                            self._stat_collector.record_media_sent(file_path)
                             # self._telegram_wrap.send_text_message(submission.title, chat_title=self._telegram_channel)
             else:
                 if time.time() - last_post_time > self._browse_delay:
@@ -63,7 +65,7 @@ class SubredditBrowser:
             self._redis.srem(f'{self._db_key_prefix}_posted', sub_id)
             self._redis.hdel(f'{self._db_key_prefix}_post_time', sub_id)
 
-    def _extract_media(self, submission: praw.models.Submission) -> Tuple[Optional[str], Optional[TelegramMediaType]]:
+    def _extract_media(self, submission: praw.models.Submission) -> Optional[str]:
         download_url = None
         default_ext = None
         file_path = None
@@ -114,15 +116,15 @@ class SubredditBrowser:
                     default_ext = 'gif'
         if download_url is not None:
             file_path = DownloadManager.download_media(download_url, file_path, default_ext)
-            media_type = TelegramHelper.determine_media_type(file_path)
-            return file_path, media_type
-        return None, None
+            return file_path
+        return None
 
     # Cannot be static, multiple browser objects may subscribe to same TelegramWrapper object
     def _process_message_sent(self, message: dict):
         logging.debug(f"Message sent notification received: {message}")
         path = TelegramHelper.extract_media_path(message)
         if path is not None:
+            self._stat_collector.record_media_delivered(path)
             os.remove(path)
         logging.debug(f"Message processed: {message}. File removed: {path}")
 
@@ -134,6 +136,7 @@ class SubredditBrowser:
         self._subreddit = None
         self._telegram_wrap = None
         self._redis = None
+        self._stat_collector = None
 
         logging.debug(f"SubredditBrowser object deleted.")
 
@@ -149,6 +152,7 @@ class SubredditBrowser:
                  telegram_wrap: TelegramWrapper,
                  telegram_channel: str,
                  redis_db: Redis,
+                 stat_collector: StatCollector,
                  top_num: int = 20,
                  browse_delay: int = 3600,  # one hour by default
                  cleanup_delay: int = 86400,  # one day by default
@@ -186,6 +190,8 @@ class SubredditBrowser:
         self._redis = redis_db
         self._cleanup_delay = cleanup_delay
         self._db_key_prefix = f"{subreddit_name}_{telegram_channel}"
+
+        self._stat_collector = stat_collector
 
         self._browse_stop = threading.Event()
         self._browse_worker = threading.Thread(target=self._browse_subreddit, args=())

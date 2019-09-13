@@ -6,6 +6,7 @@ from reddit.subreddit_browser import SubredditBrowser
 from redis import Redis
 import secrets
 import settings
+from stats import StatCollector
 from telegram.telegram_wrapper import TelegramWrapper, TelegramAuthState
 import time
 
@@ -24,6 +25,7 @@ logging.info(f"Connected to Redis instance at {secrets.redis_host}:{secrets.redi
 
 # telegram init
 telegram = None
+stat_collector = None
 reddit = None
 
 
@@ -39,7 +41,9 @@ def index():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     global telegram
+    global stat_collector
     global reddit
+    global redis
 
     if request.method == 'POST':
         settings.red_subreddit_name = request.form.get("subreddit")
@@ -67,6 +71,9 @@ def login():
 
         time.sleep(0.5)
 
+    if stat_collector is None:
+        stat_collector = StatCollector(redis, f"{settings.red_subreddit_name}_{settings.tel_channel_name}")
+
     if reddit is None:
         telegram.update_chat_ids()
         time.sleep(1)
@@ -79,6 +86,7 @@ def login():
                                   telegram_wrap=telegram,
                                   telegram_channel=settings.tel_channel_name,
                                   redis_db=redis,
+                                  stat_collector=stat_collector,
                                   top_num=settings.red_top_entries_num,
                                   browse_delay=settings.red_browse_delay,
                                   tmp_dir=settings.red_tmp_dir)
@@ -91,12 +99,16 @@ def logout():
     logging.debug(f"Logging out.")
     global reddit
     global telegram
+    global stat_collector
 
     reddit.stop()
     telegram.stop()
 
     del reddit
     reddit = None
+
+    del stat_collector
+    stat_collector = None
 
     del telegram
     telegram = None
