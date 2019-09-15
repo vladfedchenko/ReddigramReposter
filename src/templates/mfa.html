@@ -1,18 +1,21 @@
-<!doctype html>
+{% extends "base.html" %}
+{% block description %}ReddigramReposter MFA code for telegram login input page{% endblock %}
+{% block content %}
 
-<html lang="en">
-<head>
-  <meta charset="utf-8">
+<div class="container">
 
-  <title>ReddigramReposter</title>
-  <meta name="description" content="ReddigramReposter MFA code for telegram login entry page">
-  <meta name="author" content="Vladyslav Fedchenko">
-</head>
+    <form action ="{{ url_for('mfa_code')}}" method="post">
+        <div class="row my-2">
+            <label class="col-4 col-sm-4 col-md-3 col-lg-2 col-xl-2 col-form-label">MFA code</label>
+            <div class="col-8 col-sm-8 col-md-5 col-lg-5 col-xl-4">
+                <input type="text" class="form-control" name="mfa"
+                       placeholder="Enter the received code">
+            </div>
+        </div>
 
-<body>
-    <form action="/mfa_code" method="post">
-        MFA code: <input type="text" name="mfa">
-        <p></p><input type="submit" value="Submit">
+        <input type="submit" class="btn btn-primary" value="Submit">
     </form>
-</body>
-</html>
+
+</div>
+
+{% endblock %}
