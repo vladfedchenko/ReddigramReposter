@@ -8,6 +8,19 @@ from telegram.telegram_wrapper import TelegramMediaType
 from typing import Dict, List, Tuple
 
 
+BY_TYPE_KEYS = {'total_image': 'Images',
+                'total_video': 'Videos',
+                'total_animation': 'Animations',
+                'total_document': 'Documents',
+                'total_audio]': 'Audios'}
+
+BY_TYPE_SIZE_KEYS = {'total_image_size': 'Images',
+                     'total_video_size': 'Videos',
+                     'total_animation_size': 'Animations',
+                     'total_document_size': 'Documents',
+                     'total_audio_size]': 'Audios'}
+
+
 class StatCollector:
     """This object collects statistics about reposted posts."""
 

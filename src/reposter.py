@@ -1,12 +1,13 @@
 """This is an entry file for Flask ReddigramReposter app"""
 from flask import Flask, redirect, render_template, request, url_for
+import json
 import logging
 import os
 from reddit.subreddit_browser import SubredditBrowser
 from redis import Redis
 import secrets
 import settings
-from stats import StatCollector
+from stats import StatCollector, BY_TYPE_KEYS
 from telegram.telegram_wrapper import TelegramWrapper, TelegramAuthState
 import time
 
@@ -32,10 +33,30 @@ reddit = None
 @app.route('/')
 def index():
     global telegram
+    global stat_collector
+
+    stat_dict = None
+
+    if stat_collector is not None:
+
+        totals_sent = stat_collector.get_totals_sent()
+        totals_sent_list = [['Type', 'Number sent']]
+        totals_sent_list.extend([[BY_TYPE_KEYS[key], totals_sent[key]] for key in BY_TYPE_KEYS
+                                 if key in totals_sent and totals_sent[key] > 0])
+
+        totals_delivered = stat_collector.get_totals_delivered()
+        totals_delivered_list = [['Type', 'Number delivered']]
+        totals_delivered_list.extend([[BY_TYPE_KEYS[key], totals_delivered[key]] for key in BY_TYPE_KEYS
+                                      if key in totals_delivered and totals_delivered[key] > 0])
+
+        stat_dict = {'totals_by_type_sent': json.dumps(totals_sent_list),
+                     'totals_by_type_delivered': json.dumps(totals_delivered_list)}
+
     return render_template('index.html',
                            logged_in=telegram is not None,
                            subreddit=settings.red_subreddit_name,
-                           tel_channel=settings.tel_channel_name)
+                           tel_channel=settings.tel_channel_name,
+                           stat_dict=stat_dict)
 
 
 @app.route('/login', methods=['GET', 'POST'])

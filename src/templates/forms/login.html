@@ -1,5 +1,5 @@
 <form action ="{{ url_for('login')}}" method="post">
-    <div class="row my-2">
+    <div class="row my-2 mx-3">
         <label class="col-4 col-sm-4 col-md-3 col-lg-2 col-xl-2 col-form-label">Subreddit</label>
         <div class="col-8 col-sm-8 col-md-5 col-lg-5 col-xl-4">
             <input type="text" class="form-control" value="{{ subreddit }}" name="subreddit"
@@ -7,13 +7,18 @@
         </div>
     </div>
 
-    <dic class="row my-2">
+    <div class="row my-2 mx-3">
         <label class="col-4 col-sm-4 col-md-3 col-lg-2 col-xl-2 col-form-label">Telegram channel</label>
         <div class="col-8 col-sm-8 col-md-5 col-lg-5 col-xl-4">
             <input type="text" class="form-control" value="{{ tel_channel }}" name="tel_channel"
                    placeholder="Telegram channel name">
         </div>
-    </dic>
+    </div>
 
-    <input type="submit" class="btn btn-primary" value="Login">
+    <div class="row my-2 mx-3">
+        <div class="col">
+            <input type="submit" class="btn btn-primary" value="Login">
+        </div>
+    </div>
+
 </form>
