@@ -7,7 +7,7 @@ from reddit.subreddit_browser import SubredditBrowser
 from redis import Redis
 import secrets
 import settings
-from stats import StatCollector, BY_TYPE_KEYS
+from stats import StatCollector, DataExtractor
 from telegram.telegram_wrapper import TelegramWrapper, TelegramAuthState
 import time
 
@@ -39,19 +39,32 @@ def index():
     stat_dict = None
 
     if stat_collector is not None:
-
         totals_sent = stat_collector.get_totals_sent()
-        totals_sent_list = [['Type', 'Number sent']]
-        totals_sent_list.extend([[BY_TYPE_KEYS[key], totals_sent[key]] for key in BY_TYPE_KEYS
-                                 if key in totals_sent and totals_sent[key] > 0])
+        totals_sent_list = [['Type', f'Number sent']] + DataExtractor.extract_media_by_type_list(totals_sent)
 
         totals_delivered = stat_collector.get_totals_delivered()
-        totals_delivered_list = [['Type', 'Number delivered']]
-        totals_delivered_list.extend([[BY_TYPE_KEYS[key], totals_delivered[key]] for key in BY_TYPE_KEYS
-                                      if key in totals_delivered and totals_delivered[key] > 0])
+        totals_delivered_list = [['Type', f'Number delivered']] + \
+            DataExtractor.extract_media_by_type_list(totals_delivered)
+
+        totals_sent_size_list = [['Type', 'Size of sent']] + DataExtractor.extract_media_by_type_size_list(totals_sent)
+
+        totals_delivered_size_list = [['Type', 'Size of delivered']] + \
+            DataExtractor.extract_media_by_type_size_list(totals_delivered)
+
+        totals_sent_delivered = [['Type', 'Number'],
+                                 ['Sent', totals_sent['total']],
+                                 ['Delivered', totals_delivered['total']]]
+
+        totals_sent_delivered_size = [['Type', 'Number'],
+                                      ['Sent', totals_sent['total_size']],
+                                      ['Delivered', totals_delivered['total_size']]]
 
         stat_dict = {'totals_by_type_sent': json.dumps(totals_sent_list),
-                     'totals_by_type_delivered': json.dumps(totals_delivered_list)}
+                     'totals_by_type_delivered': json.dumps(totals_delivered_list),
+                     'totals_by_type_size_sent': json.dumps(totals_sent_size_list),
+                     'totals_by_type_size_delivered': json.dumps(totals_delivered_size_list),
+                     'totals_sent_delivered': json.dumps(totals_sent_delivered),
+                     'totals_sent_delivered_size': json.dumps(totals_sent_delivered_size)}
 
     return render_template('index.html',
                            logged_in=telegram is not None,

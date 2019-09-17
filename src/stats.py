@@ -5,7 +5,7 @@ import os
 from redis import Redis
 from telegram.utils import TelegramHelper
 from telegram.telegram_wrapper import TelegramMediaType
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, TypeVar
 
 
 BY_TYPE_KEYS = {'total_image': 'Images',
@@ -19,6 +19,9 @@ BY_TYPE_SIZE_KEYS = {'total_image_size': 'Images',
                      'total_animation_size': 'Animations',
                      'total_document_size': 'Documents',
                      'total_audio_size]': 'Audios'}
+
+
+StrOrFloat = TypeVar('StrOrFloat', str, float)
 
 
 class StatCollector:
@@ -215,3 +218,31 @@ class StatCollector:
             file_path: Path to the reposted media file.
         """
         self._record_media_stats(file_path, "sent")
+
+
+class DataExtractor:
+    """Object that provides utility methods to extract specific data from data fetched from DB"""
+
+    @staticmethod
+    def extract_media_by_type_list(fetched_dict: Dict[str, float]) -> List[List[StrOrFloat]]:
+        """Extract list of messages by type from dict returned by StatCollector.get_totals_sent or similar method.
+        Args:
+            fetched_dict: Dictionary returned by StatCollector.get_totals_sent or similar method.
+        Returns:
+            List of lists. Each sublist has exactly 2 elements: media type (str) and number of messages (float).
+        """
+        totals_list = [[BY_TYPE_KEYS[key], fetched_dict[key]] for key in BY_TYPE_KEYS
+                       if key in fetched_dict and fetched_dict[key] > 0]
+        return totals_list
+
+    @staticmethod
+    def extract_media_by_type_size_list(fetched_dict: Dict[str, float]) -> List[List[StrOrFloat]]:
+        """Extract list of message SIZES by type from dict returned by StatCollector.get_totals_sent or similar method.
+        Args:
+            fetched_dict: Dictionary returned by StatCollector.get_totals_sent or similar method.
+        Returns:
+            List of lists. Each sublist has exactly 2 elements: media type (str) and size of messages (float).
+        """
+        totals_list = [[BY_TYPE_SIZE_KEYS[key], fetched_dict[key]] for key in BY_TYPE_SIZE_KEYS
+                       if key in fetched_dict and fetched_dict[key] > 0]
+        return totals_list

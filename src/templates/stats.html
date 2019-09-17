@@ -1,0 +1,64 @@
+
+<h4 class="mx-4 my-2">Reposting from "{{ subreddit }}" to "{{ tel_channel }}"</h4>
+
+<div class="card mx-4 my-2">
+    <div class="card-body">
+
+        <h5 class="card-title">Total sent and delivered messages</h5>
+        <h6 class="card-subtitle mb-2 text-muted">Total statistics on sent and delivered messages both by number and by file sizes</h6>
+
+        <div class="row">
+
+            <!-- Totals by number -->
+            <div class="col-12 col-sm-12 col-md-6 col-lg-2 col-xl-2" id="totals_sent_delivered" style="min-height: 300px;" align='center'></div>
+            <div class="col-12 col-sm-12 col-md-6 col-lg-5 col-xl-5" id="totals_sent" style="min-height: 300px;"></div>
+            <div class="col-12 col-sm-12 col-md-6 col-lg-5 col-xl-5" id="totals_delivered" style="min-height: 300px;"></div>
+
+            <!-- Totals by size -->
+            <div class="col-12 col-sm-12 col-md-6 col-lg-2 col-xl-2" id="totals_sent_delivered_size" style="min-height: 300px;" align='center'></div>
+            <div class="col-12 col-sm-12 col-md-6 col-lg-5 col-xl-5" id="totals_sent_size" style="min-height: 300px;"></div>
+            <div class="col-12 col-sm-12 col-md-6 col-lg-5 col-xl-5" id="totals_delivered_size" style="min-height: 300px;"></div>
+        </div>
+    </div>
+</div>
+
+<script type="text/javascript" src="{{ url_for('static', filename='js/pie-chart.js') }}"></script>
+<script type="text/javascript" src="{{ url_for('static', filename='js/col-chart-simple.js') }}"></script>
+<script type="text/javascript">
+
+    {% if logged_in %}
+
+    var totalsSentDelivered = {{ stat_dict['totals_sent_delivered']|safe }};
+    var totalsSentData = {{ stat_dict['totals_by_type_sent']|safe }};
+    var totalsDeliveredData = {{ stat_dict['totals_by_type_delivered']|safe }};
+
+    var totalsSentDeliveredSize = {{ stat_dict['totals_sent_delivered_size']|safe }};
+    var totalsSentSizeData = {{ stat_dict['totals_by_type_size_sent']|safe }};
+    var totalsDeliveredSizeData = {{ stat_dict['totals_by_type_size_delivered']|safe }};
+
+    google.charts.load('current', {'packages':['corechart']});
+
+    // Totals by number
+
+    google.charts.setOnLoadCallback(function() {
+        drawSimpleColChart("totals_sent_delivered", totalsSentDelivered, "Total number of messages"); });
+
+    google.charts.setOnLoadCallback(function() {
+        drawPieChart("totals_sent", totalsSentData, "Total media sent per category"); });
+
+    google.charts.setOnLoadCallback(function() {
+        drawPieChart("totals_delivered", totalsDeliveredData, "Total media delivered per category"); });
+
+    // Totals by size
+
+    google.charts.setOnLoadCallback(function() {
+        drawSimpleColChart("totals_sent_delivered_size", totalsSentDeliveredSize, "Total size of messages, MB"); });
+
+    google.charts.setOnLoadCallback(function() {
+        drawPieChart("totals_sent_size", totalsSentSizeData, "Size of media sent per category, MB"); });
+
+    google.charts.setOnLoadCallback(function() {
+        drawPieChart("totals_delivered_size", totalsDeliveredSizeData, "Size media delivered per category, MB"); });
+
+    {% endif %}
+</script>

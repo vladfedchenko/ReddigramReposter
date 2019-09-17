@@ -10,15 +10,8 @@
 
 <div class="container">
     {% if logged_in %}
-    <h4>Reposting from {{ subreddit }} to {{ tel_channel }}</h4>
-    <div class="jumbotron">
-        <div class="row">
-            <div class="col-12 col-sm-12 col-md-6 col-lg-6 col-xl-4" id="reposted_total_sent">
-            </div>
-            <div class="col-12 col-sm-12 col-md-6 col-lg-6 col-xl-4" id="reposted_total_delivered">
-            </div>
-        </div>
-    </div>
+
+    {% include 'stats.html' %}
 
     {% else %}
 
@@ -26,26 +19,5 @@
 
     {% endif %}
 </div>
-
-<script type="text/javascript" src="{{ url_for('static', filename='js/pie-chart.js') }}"></script>
-<script type="text/javascript">
-
-    {% if logged_in %}
-
-    var totalsSentData = {{ stat_dict['totals_by_type_sent']|safe }};
-    var totalsDeliveredData = {{ stat_dict['totals_by_type_delivered']|safe }};
-
-    google.charts.load('current', {'packages':['corechart']});
-
-    google.charts.setOnLoadCallback(function() {
-            drawPieChart("reposted_total_sent", totalsSentData, "Total media sent");
-        });
-
-    google.charts.setOnLoadCallback(function() {
-            drawPieChart("reposted_total_delivered", totalsDeliveredData, "Total media delivered");
-        });
-
-    {% endif %}
-</script>
 
 {% endblock %}
