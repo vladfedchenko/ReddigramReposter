@@ -11,7 +11,8 @@ from stats import StatCollector, BY_TYPE_KEYS
 from telegram.telegram_wrapper import TelegramWrapper, TelegramAuthState
 import time
 
-app = Flask("ReddigramReposter", root_path=os.path.dirname(__file__))
+app_root = os.path.dirname(__file__)
+app = Flask("ReddigramReposter", root_path=app_root, static_folder=f'{app_root}/static')
 
 # logging setup
 logging.basicConfig(filename=settings.log_location,
@@ -147,4 +148,4 @@ def mfa_code():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', debug=False)
+    app.run(host='0.0.0.0', debug=True)
