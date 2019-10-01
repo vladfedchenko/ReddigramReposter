@@ -7,7 +7,7 @@ from reddit.subreddit_browser import SubredditBrowser
 from redis import Redis
 import secrets
 import settings
-from stats import StatCollector, DataExtractor
+from stats import StatCollector, DataExtractor, BY_TYPE_KEYS, BY_TYPE_SIZE_KEYS
 from telegram.telegram_wrapper import TelegramWrapper, TelegramAuthState
 import time
 
@@ -36,20 +36,73 @@ def index():
     global telegram
     global stat_collector
 
-    stat_dict = None
+    today_stats_dict = None
+    totals_stats_dict = None
+    week_stats_dict = None
 
     if stat_collector is not None:
+
+        # Today statistics extraction
+        today_sent = stat_collector.get_today_sent()
+        today_sent_list = [['Type', f'Number sent']] + DataExtractor.extract_media_by_type(today_sent)
+
+        today_delivered = stat_collector.get_today_delivered()
+        today_delivered_list = [['Type', f'Number delivered']] + \
+            DataExtractor.extract_media_by_type(today_delivered)
+
+        today_sent_size_list = [['Type', 'Size of sent']] + DataExtractor.extract_media_by_type_size(today_sent)
+
+        today_delivered_size_list = [['Type', 'Size of delivered']] + \
+            DataExtractor.extract_media_by_type_size(today_delivered)
+
+        today_sent_delivered = [['Type', 'Number'],
+                                ['Sent', today_sent['total']],
+                                ['Delivered', today_delivered['total']]]
+
+        today_sent_delivered_size = [['Type', 'Number'],
+                                     ['Sent', today_sent['total_size']],
+                                     ['Delivered', today_delivered['total_size']]]
+
+        today_stats_dict = {'today_by_type_sent': json.dumps(today_sent_list),
+                            'today_by_type_delivered': json.dumps(today_delivered_list),
+                            'today_by_type_size_sent': json.dumps(today_sent_size_list),
+                            'today_by_type_size_delivered': json.dumps(today_delivered_size_list),
+                            'today_sent_delivered': json.dumps(today_sent_delivered),
+                            'today_sent_delivered_size': json.dumps(today_sent_delivered_size)}
+
+        # Week stats extraction
+        week_sent = stat_collector.get_week_sent()
+        week_delivered = stat_collector.get_week_delivered()
+
+        week_sent_list = [['Day'] + [BY_TYPE_KEYS[key] for key in BY_TYPE_KEYS]]
+        week_sent_list += DataExtractor.extract_multiday_media_by_type(week_sent)
+
+        week_sent_size_list = [['Day'] + [BY_TYPE_SIZE_KEYS[key] for key in BY_TYPE_SIZE_KEYS]]
+        week_sent_size_list += DataExtractor.extract_multiday_media_by_type_size(week_sent)
+
+        week_delivered_list = [['Day'] + [BY_TYPE_KEYS[key] for key in BY_TYPE_KEYS]]
+        week_delivered_list += DataExtractor.extract_multiday_media_by_type(week_delivered)
+
+        week_delivered_size_list = [['Day'] + [BY_TYPE_SIZE_KEYS[key] for key in BY_TYPE_SIZE_KEYS]]
+        week_delivered_size_list += DataExtractor.extract_multiday_media_by_type_size(week_delivered)
+
+        week_stats_dict = {'week_sent': json.dumps(week_sent_list),
+                           'week_sent_size': json.dumps(week_sent_size_list),
+                           'week_delivered': json.dumps(week_delivered_list),
+                           'week_delivered_size': json.dumps(week_delivered_size_list)}
+
+        # Totals statistics extraction
         totals_sent = stat_collector.get_totals_sent()
-        totals_sent_list = [['Type', f'Number sent']] + DataExtractor.extract_media_by_type_list(totals_sent)
+        totals_sent_list = [['Type', f'Number sent']] + DataExtractor.extract_media_by_type(totals_sent)
 
         totals_delivered = stat_collector.get_totals_delivered()
         totals_delivered_list = [['Type', f'Number delivered']] + \
-            DataExtractor.extract_media_by_type_list(totals_delivered)
+            DataExtractor.extract_media_by_type(totals_delivered)
 
-        totals_sent_size_list = [['Type', 'Size of sent']] + DataExtractor.extract_media_by_type_size_list(totals_sent)
+        totals_sent_size_list = [['Type', 'Size of sent']] + DataExtractor.extract_media_by_type_size(totals_sent)
 
         totals_delivered_size_list = [['Type', 'Size of delivered']] + \
-            DataExtractor.extract_media_by_type_size_list(totals_delivered)
+            DataExtractor.extract_media_by_type_size(totals_delivered)
 
         totals_sent_delivered = [['Type', 'Number'],
                                  ['Sent', totals_sent['total']],
@@ -59,18 +112,20 @@ def index():
                                       ['Sent', totals_sent['total_size']],
                                       ['Delivered', totals_delivered['total_size']]]
 
-        stat_dict = {'totals_by_type_sent': json.dumps(totals_sent_list),
-                     'totals_by_type_delivered': json.dumps(totals_delivered_list),
-                     'totals_by_type_size_sent': json.dumps(totals_sent_size_list),
-                     'totals_by_type_size_delivered': json.dumps(totals_delivered_size_list),
-                     'totals_sent_delivered': json.dumps(totals_sent_delivered),
-                     'totals_sent_delivered_size': json.dumps(totals_sent_delivered_size)}
+        totals_stats_dict = {'totals_by_type_sent': json.dumps(totals_sent_list),
+                             'totals_by_type_delivered': json.dumps(totals_delivered_list),
+                             'totals_by_type_size_sent': json.dumps(totals_sent_size_list),
+                             'totals_by_type_size_delivered': json.dumps(totals_delivered_size_list),
+                             'totals_sent_delivered': json.dumps(totals_sent_delivered),
+                             'totals_sent_delivered_size': json.dumps(totals_sent_delivered_size)}
 
     return render_template('index.html',
                            logged_in=telegram is not None,
                            subreddit=settings.red_subreddit_name,
                            tel_channel=settings.tel_channel_name,
-                           stat_dict=stat_dict)
+                           today_stats_dict=today_stats_dict,
+                           week_stats_dict=week_stats_dict,
+                           totals_stats_dict=totals_stats_dict)
 
 
 @app.route('/login', methods=['GET', 'POST'])

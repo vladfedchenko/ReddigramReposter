@@ -18,7 +18,7 @@
 <style>
 /* override Bootstrap's container */
 html, body {
-height: 100%;
+    height: 100%;
 }
 
 .container{
@@ -31,28 +31,32 @@ height: 100%;
 <body>
 
     <div class="container bg-light">
-        <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+
+        <nav class="navbar sticky-top navbar-expand-lg navbar-dark bg-dark">
             <button class="navbar-toggler ml-auto" type="button" data-toggle="collapse"
                     data-target="#navbar-collapse-1">
                 <span class="navbar-toggler-icon"></span>
             </button>
 
             <div class="collapse navbar-collapse" id="navbar-collapse-1">
-                <ul class="navbar-nav mr-auto my-2 my-lg-0">
+                <ul class="navbar-nav">
                     <li class="nav-item active">
                         <a class="nav-link" href="{{ url_for('index')}}">Home</a>
                     </li>
+                    {% block add_nav_buttons %} {% endblock %}
                 </ul>
 
                 {% if logged_in %}
-                <form class="form-inline my-2 my-lg-0" action="{{ url_for('logout')}}">
+                <form class="navbar-nav ml-auto form-inline" action="{{ url_for('logout')}}">
                     <button class="btn btn-outline-danger" type="submit">Logout</button>
                 </form>
                 {% endif %}
             </div>
         </nav>
 
-        {% block content %}{% endblock %}
+        <main role="main">
+            {% block content %}{% endblock %}
+        </main>
 
     </div>
 

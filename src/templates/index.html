@@ -6,6 +6,20 @@
 
 {% endblock %}
 
+{% block add_nav_buttons %}
+{% if logged_in %}
+<li class="nav-item">
+    <a class="nav-link page-scroll" href="#today">Today</a>
+</li>
+<li class="nav-item">
+    <a class="nav-link page-scroll" href="#week">Week</a>
+</li>
+<li class="nav-item">
+    <a class="nav-link page-scroll" href="#totals">Totals</a>
+</li>
+{% endif %}
+{% endblock %}
+
 {% block content %}
 
 <div class="container">

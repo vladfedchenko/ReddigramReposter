@@ -12,13 +12,13 @@ BY_TYPE_KEYS = {'total_image': 'Images',
                 'total_video': 'Videos',
                 'total_animation': 'Animations',
                 'total_document': 'Documents',
-                'total_audio]': 'Audios'}
+                'total_audio': 'Audios'}
 
 BY_TYPE_SIZE_KEYS = {'total_image_size': 'Images',
                      'total_video_size': 'Videos',
                      'total_animation_size': 'Animations',
                      'total_document_size': 'Documents',
-                     'total_audio_size]': 'Audios'}
+                     'total_audio_size': 'Audios'}
 
 
 StrOrFloat = TypeVar('StrOrFloat', str, float)
@@ -224,7 +224,7 @@ class DataExtractor:
     """Object that provides utility methods to extract specific data from data fetched from DB"""
 
     @staticmethod
-    def extract_media_by_type_list(fetched_dict: Dict[str, float]) -> List[List[StrOrFloat]]:
+    def extract_media_by_type(fetched_dict: Dict[str, float]) -> List[List[StrOrFloat]]:
         """Extract list of messages by type from dict returned by StatCollector.get_totals_sent or similar method.
         Args:
             fetched_dict: Dictionary returned by StatCollector.get_totals_sent or similar method.
@@ -232,11 +232,11 @@ class DataExtractor:
             List of lists. Each sublist has exactly 2 elements: media type (str) and number of messages (float).
         """
         totals_list = [[BY_TYPE_KEYS[key], fetched_dict[key]] for key in BY_TYPE_KEYS
-                       if key in fetched_dict and fetched_dict[key] > 0]
+                       if key in fetched_dict]
         return totals_list
 
     @staticmethod
-    def extract_media_by_type_size_list(fetched_dict: Dict[str, float]) -> List[List[StrOrFloat]]:
+    def extract_media_by_type_size(fetched_dict: Dict[str, float]) -> List[List[StrOrFloat]]:
         """Extract list of message SIZES by type from dict returned by StatCollector.get_totals_sent or similar method.
         Args:
             fetched_dict: Dictionary returned by StatCollector.get_totals_sent or similar method.
@@ -244,5 +244,41 @@ class DataExtractor:
             List of lists. Each sublist has exactly 2 elements: media type (str) and size of messages (float).
         """
         totals_list = [[BY_TYPE_SIZE_KEYS[key], fetched_dict[key]] for key in BY_TYPE_SIZE_KEYS
-                       if key in fetched_dict and fetched_dict[key] > 0]
+                       if key in fetched_dict]
         return totals_list
+
+    @staticmethod
+    def extract_multiday_media_by_type(fetched_list: List[Tuple[str, Dict[str, float]]]) -> List[List[StrOrFloat]]:
+        """Extract multiday list of messages by type from dict returned by StatCollector.get_week_sent
+            or similar method.
+
+        Args:
+            fetched_list: List returned by StatCollector.get_week_sent or similar method.
+        Returns:
+            List of lists. Each sublist contains the next entries: date string, number of messages of each type.
+        """
+        res = []
+        for date, date_dict in fetched_list:
+            line = [date]
+            line += [date_dict[key] for key in BY_TYPE_KEYS if key in date_dict]
+            res.append(line)
+
+        return res
+
+    @staticmethod
+    def extract_multiday_media_by_type_size(fetched_list: List[Tuple[str, Dict[str, float]]]) -> List[List[StrOrFloat]]:
+        """Extract multiday list of message SIZES by type from dict returned by StatCollector.get_week_sent
+            or similar method.
+
+        Args:
+            fetched_list: List returned by StatCollector.get_week_sent or similar method.
+        Returns:
+            List of lists. Each sublist contains the next entries: date string, size of messages of each type.
+        """
+        res = []
+        for date, date_dict in fetched_list:
+            line = [date]
+            line += [date_dict[key] for key in BY_TYPE_SIZE_KEYS if key in date_dict]
+            res.append(line)
+
+        return res
