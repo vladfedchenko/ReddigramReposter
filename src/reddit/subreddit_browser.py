@@ -3,15 +3,15 @@ and repost its content to a Telegram community."""
 import logging
 import os
 import praw
-from prawcore.exceptions import ServerError
+from prawcore.exceptions import ServerError, RequestException
 import re
 from redis import Redis
 from stats import StatCollector
-from telegram.telegram_wrapper import TelegramWrapper, TelegramMediaType
+from telegram.telegram_wrapper import TelegramWrapper
 from telegram.utils import TelegramHelper
 import threading
 import time
-from typing import Tuple, Optional
+from typing import Optional
 from utils import DownloadManager
 
 
@@ -30,24 +30,24 @@ class SubredditBrowser:
                 post = False
                 try:
                     submissions = self._subreddit.top('day', limit=self._top_num)
-                except ServerError:
-                    logging.error("Reddit server error encountered. No reposts during this browse window.")
-                    submissions = []
-                for submission in submissions:
-                    if not self._redis.sismember(f'{self._db_key_prefix}_posted', submission.id):
-                        file_path = self._extract_media(submission)
-                        if file_path is not None:
-                            logging.debug(f'Reposting post ID: {submission.id} from {self._subreddit.display_name} '
-                                          f'to {self._telegram_channel}.')
+                    for submission in submissions:
+                        if not self._redis.sismember(f'{self._db_key_prefix}_posted', submission.id):
+                            file_path = self._extract_media(submission)
+                            if file_path is not None:
+                                logging.debug(f'Reposting post ID: {submission.id} from {self._subreddit.display_name} '
+                                              f'to {self._telegram_channel}.')
 
-                            self._redis.sadd(f'{self._db_key_prefix}_posted', submission.id)
-                            self._redis.hset(f'{self._db_key_prefix}_post_time', submission.id, time.time())
-                            self._telegram_wrap.send_media_message(file_path,
-                                                                   TelegramHelper.determine_media_type(file_path),
-                                                                   chat_title=self._telegram_channel,
-                                                                   caption=submission.title)
-                            self._stat_collector.record_media_sent(file_path)
-                            # self._telegram_wrap.send_text_message(submission.title, chat_title=self._telegram_channel)
+                                self._redis.sadd(f'{self._db_key_prefix}_posted', submission.id)
+                                self._redis.hset(f'{self._db_key_prefix}_post_time', submission.id, time.time())
+                                self._telegram_wrap.send_media_message(file_path,
+                                                                       TelegramHelper.determine_media_type(file_path),
+                                                                       chat_title=self._telegram_channel,
+                                                                       caption=submission.title)
+                                self._stat_collector.record_media_sent(file_path)
+                                # self._telegram_wrap.send_text_message(submission.title,
+                                #                                       chat_title=self._telegram_channel)
+                except (ServerError, RequestException):
+                    logging.error("Reddit server error encountered. No reposts during this browse window.")
             else:
                 if time.time() - last_post_time > self._browse_delay:
                     post = True
