@@ -1,12 +1,12 @@
 """This is an entry file for Flask ReddigramReposter app"""
-from flask import Flask, redirect, render_template, request, url_for
+from flask import Flask, redirect, render_template, request, url_for, abort
 import json
 import logging
 import os
 from reddit.subreddit_browser import SubredditBrowser
 from redis import Redis
 import secrets
-import settings
+import settings as app_settings
 from stats import StatCollector, DataExtractor, BY_TYPE_KEYS, BY_TYPE_SIZE_KEYS
 from telegram.telegram_wrapper import TelegramWrapper, TelegramAuthState
 import time
@@ -15,9 +15,9 @@ app_root = os.path.dirname(__file__)
 app = Flask("ReddigramReposter", root_path=app_root, static_folder=f'{app_root}/static')
 
 # logging setup
-logging.basicConfig(filename=settings.log_location,
-                    format=settings.log_format_str,
-                    level=settings.log_level)
+logging.basicConfig(filename=app_settings.log_location,
+                    format=app_settings.log_format_str,
+                    level=app_settings.log_level)
 
 # redis init
 logging.debug(f"Connecting to Redis instance at {secrets.redis_host}:{secrets.redis_port}")
@@ -121,8 +121,8 @@ def index():
 
     return render_template('index.html',
                            logged_in=telegram is not None,
-                           subreddit=settings.red_subreddit_name,
-                           tel_channel=settings.tel_channel_name,
+                           subreddit=app_settings.red_subreddit_name,
+                           tel_channel=app_settings.tel_channel_name,
                            today_stats_dict=today_stats_dict,
                            week_stats_dict=week_stats_dict,
                            totals_stats_dict=totals_stats_dict)
@@ -136,19 +136,19 @@ def login():
     global redis
 
     if request.method == 'POST':
-        settings.red_subreddit_name = request.form.get("subreddit")
-        settings.tel_channel_name = request.form.get("tel_channel")
+        app_settings.red_subreddit_name = request.form.get("subreddit")
+        app_settings.tel_channel_name = request.form.get("tel_channel")
 
-        settings.tel_db_dir = "data/{}_{}_db".format(settings.red_subreddit_name, settings.tel_channel_name)
+        app_settings.tel_db_dir = "data/{}_{}_db".format(app_settings.red_subreddit_name, app_settings.tel_channel_name)
 
     if telegram is None:
-        telegram = TelegramWrapper(tdlib_log_file=settings.tel_log_file,
-                                   tdlib_log_verbosity=settings.tel_log_verbosity)
+        telegram = TelegramWrapper(tdlib_log_file=app_settings.tel_log_file,
+                                   tdlib_log_verbosity=app_settings.tel_log_verbosity)
 
     while telegram.authentication_state != TelegramAuthState.READY:
 
         if telegram.authentication_state == TelegramAuthState.WAIT_TDLIB_PARAMETERS:
-            telegram.set_tdlib_parameters(secrets.tel_api_id, secrets.tel_api_hash, settings.tel_db_dir)
+            telegram.set_tdlib_parameters(secrets.tel_api_id, secrets.tel_api_hash, app_settings.tel_db_dir)
 
         elif telegram.authentication_state == TelegramAuthState.WAIT_PHONE_NUMBER:
             telegram.set_tdlib_phone(secrets.tel_phone)
@@ -162,7 +162,7 @@ def login():
         time.sleep(0.5)
 
     if stat_collector is None:
-        stat_collector = StatCollector(redis, f"{settings.red_subreddit_name}_{settings.tel_channel_name}")
+        stat_collector = StatCollector(redis, f"{app_settings.red_subreddit_name}_{app_settings.tel_channel_name}")
 
     if reddit is None:
         telegram.update_chat_ids()
@@ -172,14 +172,14 @@ def login():
                                                 'username': secrets.red_username,
                                                 'password': secrets.red_password,
                                                 'user_agent': secrets.red_user_agent},
-                                  subreddit_name=settings.red_subreddit_name,
+                                  subreddit_name=app_settings.red_subreddit_name,
                                   telegram_wrap=telegram,
-                                  telegram_channel=settings.tel_channel_name,
+                                  telegram_channel=app_settings.tel_channel_name,
                                   redis_db=redis,
                                   stat_collector=stat_collector,
-                                  top_num=settings.red_top_entries_num,
-                                  browse_delay=settings.red_browse_delay,
-                                  tmp_dir=settings.red_tmp_dir)
+                                  top_num=app_settings.red_top_entries_num,
+                                  browse_delay=app_settings.red_browse_delay,
+                                  tmp_dir=app_settings.red_tmp_dir)
 
     return redirect(url_for('index'))
 
@@ -213,6 +213,24 @@ def mfa_code():
         return redirect(url_for('login'))
     else:
         return render_template('mfa.html')
+
+
+@app.route('/settings', methods=['GET', 'POST'])
+def settings():
+    global reddit
+    if reddit is None:
+        logging.error(f"Cannot change settings before login.")
+        abort(503)
+
+    if request.method == 'POST':
+        reddit.top_entries = int(request.form['top_entries'])
+        reddit.browse_delay = int(request.form['browse_delay'])
+
+    return render_template('settings.html',
+                           method_post=request.method == 'POST',
+                           logged_in=True,
+                           top_entries=reddit.top_entries,
+                           browse_delay=reddit.browse_delay)
 
 
 if __name__ == '__main__':

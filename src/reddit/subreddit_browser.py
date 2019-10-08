@@ -29,12 +29,14 @@ class SubredditBrowser:
                 last_post_time = time.time()
                 post = False
                 try:
-                    submissions = self._subreddit.top('day', limit=self._top_num)
+                    with self._subreddit_lock:
+                        submissions = self._subreddit.top('day', limit=self._top_num)
                     for submission in submissions:
                         if not self._redis.sismember(f'{self._db_key_prefix}_posted', submission.id):
                             file_path = self._extract_media(submission)
                             if file_path is not None:
-                                logging.debug(f'Reposting post ID: {submission.id} from {self._subreddit.display_name} '
+                                logging.debug(f'Reposting post ID: {submission.id} '
+                                              f'from {submission.subreddit.display_name} '
                                               f'to {self._telegram_channel}.')
 
                                 self._redis.sadd(f'{self._db_key_prefix}_posted', submission.id)
@@ -132,8 +134,12 @@ class SubredditBrowser:
         logging.debug(f"Deleting SubredditBrowser object.")
 
         del self._subreddit
+        del self._praw_core
+        del self._subreddit_lock
 
         self._subreddit = None
+        self._subreddit_lock = None
+        self._praw_core = None
         self._telegram_wrap = None
         self._redis = None
         self._stat_collector = None
@@ -173,11 +179,13 @@ class SubredditBrowser:
                 the directory.
         """
         logging.debug("Creating class SubredditBrowser object.")
-        self._subreddit = praw.Reddit(client_id=reddit_creds['client_id'],
+        self._praw_core = praw.Reddit(client_id=reddit_creds['client_id'],
                                       client_secret=reddit_creds['client_secret'],
                                       password=reddit_creds['password'],
                                       username=reddit_creds['username'],
-                                      user_agent=reddit_creds['user_agent']).subreddit(subreddit_name)
+                                      user_agent=reddit_creds['user_agent'])
+        self._subreddit = self._praw_core.subreddit(subreddit_name)
+        self._subreddit_lock = threading.Lock()
         logging.info("Reddit login OK.")
 
         self._telegram_wrap = telegram_wrap
@@ -203,6 +211,15 @@ class SubredditBrowser:
 
         self._telegram_wrap.subscribe_message_sent(self._process_message_sent)
 
+    @property
+    def browse_delay(self) -> int:
+        return self._browse_delay
+
+    @browse_delay.setter
+    def browse_delay(self, value: int):
+        logging.info(f"Changing browse delay from {self.browse_delay} to {value}.")
+        self._browse_delay = value
+
     def is_running(self) -> bool:
         """Returns True is the subreddit browsing thread is running."""
         return not self._browse_stop.is_set()
@@ -216,3 +233,33 @@ class SubredditBrowser:
             self._browse_worker.join()
             self._browse_stop = None
             self._browse_worker = None
+
+    @property
+    def subreddit_name(self) -> str:
+        with self._subreddit_lock:
+            return self._subreddit.display_name
+
+    @subreddit_name.setter
+    def subreddit_name(self, value: str):
+        with self._subreddit_lock:
+            logging.info(f"Changing subreddit from {self.subreddit_name} to {value}.")
+            del self._subreddit
+            self._subreddit = self._praw_core.subreddit(value)
+
+    @property
+    def telegram_channel(self) -> str:
+        return self._telegram_channel
+
+    @telegram_channel.setter
+    def telegram_channel(self, value: str):
+        logging.info(f"Changing telegram channel from {self.telegram_channel} to {value}.")
+        self._telegram_channel = value
+
+    @property
+    def top_entries(self) -> int:
+        return self._top_num
+
+    @top_entries.setter
+    def top_entries(self, value: int):
+        logging.info(f"Changing top entries from {self.top_entries} to {value}.")
+        self._top_num = value
