@@ -1,0 +1,7 @@
+FROM python:3-slim
+
+RUN apt-get update
+RUN apt-get install -y wget ffmpeg
+
+RUN adduser vladfedchenko --quiet
+# CMD ["bash"]

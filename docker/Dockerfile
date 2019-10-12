@@ -1,15 +1,11 @@
-FROM python:3-slim
+FROM vladfedchenko/reddigram-reposter-base:latest
 
 WORKDIR /app
 
 COPY src /app
 COPY requirements.txt /app/requirements.txt
 
-RUN apt-get update
-RUN apt-get install -y wget ffmpeg
 RUN pip install -r requirements.txt
-
-RUN adduser vladfedchenko --quiet
 
 RUN chown -R vladfedchenko /app
 
