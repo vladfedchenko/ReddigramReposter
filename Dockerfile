@@ -1,4 +1,4 @@
-\FROM vladfedchenko/reddigram-reposter-base:latest
+FROM vladfedchenko/reddigram-reposter-base:latest
 
 WORKDIR /app
 
