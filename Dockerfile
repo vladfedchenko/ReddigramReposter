@@ -1,11 +1,8 @@
-FROM vladfedchenko/reddigram-reposter-base:latest
+\FROM vladfedchenko/reddigram-reposter-base:latest
 
 WORKDIR /app
 
-COPY src /app
-COPY requirements.txt /app/requirements.txt
-
-RUN pip install -r requirements.txt
+COPY . /app
 
 RUN chown -R vladfedchenko /app
 
