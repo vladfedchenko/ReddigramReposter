@@ -6,7 +6,7 @@ COPY src /app
 COPY requirements.txt /app/requirements.txt
 
 RUN apt-get update
-RUN apt-get install -y wget
+RUN apt-get install -y wget ffmpeg
 RUN pip install -r requirements.txt
 
 RUN adduser vladfedchenko --quiet

@@ -7,6 +7,7 @@ from prawcore.exceptions import ServerError, RequestException
 import re
 from redis import Redis
 from stats import StatCollector
+import subprocess
 from telegram.telegram_wrapper import TelegramWrapper
 from telegram.utils import TelegramHelper
 import threading
@@ -33,7 +34,7 @@ class SubredditBrowser:
                         submissions = self._subreddit.top('day', limit=self._top_num)
                     for submission in submissions:
                         if not self._redis.sismember(f'{self._db_key_prefix}_posted', submission.id):
-                            file_path = self._extract_media(submission)
+                            file_path = self._extractor.extract_media(submission)
                             if file_path is not None:
                                 logging.debug(f'Reposting post ID: {submission.id} '
                                               f'from {submission.subreddit.display_name} '
@@ -67,60 +68,6 @@ class SubredditBrowser:
             self._redis.srem(f'{self._db_key_prefix}_posted', sub_id)
             self._redis.hdel(f'{self._db_key_prefix}_post_time', sub_id)
 
-    def _extract_media(self, submission: praw.models.Submission) -> Optional[str]:
-        download_url = None
-        default_ext = None
-        file_path = None
-        logging.debug(f'Extracting media from submission: {submission}')
-        if submission.url is not None:
-            if submission.url.startswith('https://i.imgur.com'):
-                if submission.url.endswith('gifv'):
-                    media_id = re.findall(r'^https://i\.imgur\.com/(.+)\.gifv', submission.url)[0]
-                    download_url = f'https://imgur.com/download/{media_id}'
-                    default_ext = 'gif'
-                    file_path = f'{self._tmp_dir}/{media_id}'
-                elif submission.url.endswith('gif'):
-                    media_id = re.findall(r'^https://i\.imgur\.com/(.+)\.gif', submission.url)[0]
-                    download_url = f'https://i.imgur.com/{media_id}.gif'
-                    default_ext = 'gif'
-                    file_path = f'{self._tmp_dir}/{media_id}'
-                elif submission.url.endswith('jpg'):
-                    media_id = re.findall(r'^https://i\.imgur\.com/(.+)\.jpg', submission.url)[0]
-                    download_url = f'https://i.imgur.com/{media_id}.jpg'
-                    default_ext = 'jpg'
-                    file_path = f'{self._tmp_dir}/{media_id}'
-                elif submission.url.endswith('png'):
-                    media_id = re.findall(r'^https://i\.imgur\.com/(.+)\.png', submission.url)[0]
-                    download_url = f'https://i.imgur.com/{media_id}.png'
-                    default_ext = 'png'
-                    file_path = f'{self._tmp_dir}/{media_id}'
-
-            elif submission.url.startswith('https://v.redd.it/'):
-                if submission.media is not None and len(submission.media) > 0 and 'reddit_video' in submission.media \
-                        and submission.media['reddit_video']['is_gif']:
-                    # Reddit stores videos separately from the audio. For now, only gif-videos are reposted.
-                    media_id = re.findall(r'^https://v\.redd\.it/(.+)', submission.url)[0]
-                    download_url = submission.media['reddit_video']['fallback_url']
-                    default_ext = 'mp4'
-                    file_path = f'{self._tmp_dir}/{media_id}'
-
-            elif submission.url.startswith('https://i.redd.it/'):
-                media_id = re.findall(r'^https://i\.redd\.it/(.+)\.(\w+)', submission.url)[0][0]
-                download_url = f'{submission.url}'
-                default_ext = 'jpg'
-                file_path = f'{self._tmp_dir}/{media_id}'
-
-            elif submission.url.startswith('https://gfycat.com/'):
-                if submission.url.endswith('gif'):
-                    media_id = re.findall(r'^https://gfycat\.com/(.+)\.gif', submission.url)[0]
-                    download_url = f'https://giant.gfycat.com/{media_id}.gif'
-                    file_path = f'{self._tmp_dir}/{media_id}'
-                    default_ext = 'gif'
-        if download_url is not None:
-            file_path = DownloadManager.download_media(download_url, file_path, default_ext)
-            return file_path
-        return None
-
     # Cannot be static, multiple browser objects may subscribe to same TelegramWrapper object
     def _process_message_sent(self, message: dict):
         logging.debug(f"Message sent notification received: {message}")
@@ -136,6 +83,7 @@ class SubredditBrowser:
         del self._subreddit
         del self._praw_core
         del self._subreddit_lock
+        del self._extractor
 
         self._subreddit = None
         self._subreddit_lock = None
@@ -143,6 +91,7 @@ class SubredditBrowser:
         self._telegram_wrap = None
         self._redis = None
         self._stat_collector = None
+        self._extractor = None
 
         logging.debug(f"SubredditBrowser object deleted.")
 
@@ -205,9 +154,9 @@ class SubredditBrowser:
         self._browse_worker = threading.Thread(target=self._browse_subreddit, args=())
         self._browse_worker.start()
 
-        self._tmp_dir = tmp_dir
         if not os.path.isdir(tmp_dir):
             os.makedirs(tmp_dir, exist_ok=True)
+        self._extractor = SubmissionMediaExtractor(tmp_dir)
 
         self._telegram_wrap.subscribe_message_sent(self._process_message_sent)
 
@@ -263,3 +212,124 @@ class SubredditBrowser:
     def top_entries(self, value: int):
         logging.info(f"Changing top entries from {self.top_entries} to {value}.")
         self._top_num = value
+
+
+class SubmissionMediaExtractor:
+    """This class encapsulates methods needed to extract media from reddit submissions"""
+
+    def _extract_av_combined(self, submission: praw.models.Submission) -> Optional[str]:
+        # Extra checking that the passed submission is a reddit video with sound submission
+        if submission.url.startswith('https://v.redd.it/') and submission.media is not None and \
+                len(submission.media) > 0 and 'reddit_video' in submission.media and \
+                not submission.media['reddit_video']['is_gif']:
+
+            logging.debug(f"Extracting video and audio for submission id {submission.id}.")
+
+            media_id = re.findall(r'^https://v\.redd\.it/(.+)', submission.url)[0]
+            default_ext = 'mp4'
+
+            # Video part download
+            download_url = submission.media['reddit_video']['fallback_url']
+            file_path = f'{self._down_dir}/{media_id}_video'
+            video_file = DownloadManager.download_media(download_url, file_path, default_ext)
+
+            if not os.path.isfile(video_file):
+                logging.debug(f"Problems downloading video file from submission id {submission.id}")
+                return None
+            else:
+                logging.debug(f"Video part downloaded: {video_file}")
+
+            download_url = f'https://v.redd.it/{media_id}/audio'
+            file_path = f'{self._down_dir}/{media_id}_audio'
+            audio_file = DownloadManager.download_media(download_url, file_path, default_ext)
+
+            if not os.path.isfile(audio_file):
+                logging.debug(f"Problems downloading audio file from submission id {submission.id}")
+                if os.path.isfile(video_file):
+                    os.remove(video_file)
+                return None
+            else:
+                logging.debug(f"Audio part downloaded: {audio_file}")
+
+            out_file = f'{self._down_dir}/{media_id}.{default_ext}'
+
+            subprocess.run(['ffmpeg', '-loglevel', 'panic',
+                                      '-i', video_file,
+                                      '-i', audio_file,
+                                      '-c', 'copy',
+                                      out_file])
+
+            if os.path.isfile(video_file):
+                os.remove(video_file)
+
+            if os.path.isfile(audio_file):
+                os.remove(audio_file)
+
+            if os.path.isfile(out_file):
+                logging.debug(f"Combined video created: {out_file}")
+                return out_file
+
+        logging.debug("Impossible to create combined video file.")
+        return None
+
+    def __init__(self, download_dir: str):
+        """Initialize SubmissionMediaExtractor class
+        Args:
+            download_dir: Directory to which the files are downloaded.
+        """
+        self._down_dir = download_dir
+
+    def extract_media(self, submission: praw.models.Submission) -> Optional[str]:
+        download_url = None
+        default_ext = None
+        file_path = None
+        logging.debug(f'Extracting media from submission: {submission}')
+        if submission.url is not None:
+            if submission.url.startswith('https://i.imgur.com'):
+                if submission.url.endswith('gifv'):
+                    media_id = re.findall(r'^https://i\.imgur\.com/(.+)\.gifv', submission.url)[0]
+                    download_url = f'https://imgur.com/download/{media_id}'
+                    default_ext = 'gif'
+                    file_path = f'{self._down_dir}/{media_id}'
+                elif submission.url.endswith('gif'):
+                    media_id = re.findall(r'^https://i\.imgur\.com/(.+)\.gif', submission.url)[0]
+                    download_url = f'https://i.imgur.com/{media_id}.gif'
+                    default_ext = 'gif'
+                    file_path = f'{self._down_dir}/{media_id}'
+                elif submission.url.endswith('jpg'):
+                    media_id = re.findall(r'^https://i\.imgur\.com/(.+)\.jpg', submission.url)[0]
+                    download_url = f'https://i.imgur.com/{media_id}.jpg'
+                    default_ext = 'jpg'
+                    file_path = f'{self._down_dir}/{media_id}'
+                elif submission.url.endswith('png'):
+                    media_id = re.findall(r'^https://i\.imgur\.com/(.+)\.png', submission.url)[0]
+                    download_url = f'https://i.imgur.com/{media_id}.png'
+                    default_ext = 'png'
+                    file_path = f'{self._down_dir}/{media_id}'
+
+            elif submission.url.startswith('https://v.redd.it/'):
+                if submission.media is not None and len(submission.media) > 0 and 'reddit_video' in submission.media:
+                    if submission.media['reddit_video']['is_gif']:
+                        media_id = re.findall(r'^https://v\.redd\.it/(.+)', submission.url)[0]
+                        download_url = submission.media['reddit_video']['fallback_url']
+                        default_ext = 'mp4'
+                        file_path = f'{self._down_dir}/{media_id}'
+                    else:
+                        return self._extract_av_combined(submission)
+
+            elif submission.url.startswith('https://i.redd.it/'):
+                media_id = re.findall(r'^https://i\.redd\.it/(.+)\.(\w+)', submission.url)[0][0]
+                download_url = f'{submission.url}'
+                default_ext = 'jpg'
+                file_path = f'{self._down_dir}/{media_id}'
+
+            elif submission.url.startswith('https://gfycat.com/'):
+                if submission.url.endswith('gif'):
+                    media_id = re.findall(r'^https://gfycat\.com/(.+)\.gif', submission.url)[0]
+                    download_url = f'https://giant.gfycat.com/{media_id}.gif'
+                    file_path = f'{self._down_dir}/{media_id}'
+                    default_ext = 'gif'
+        if download_url is not None:
+            file_path = DownloadManager.download_media(download_url, file_path, default_ext)
+            return file_path
+        return None
